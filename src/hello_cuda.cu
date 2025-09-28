@@ -18,7 +18,7 @@ int main() {
     // Launch the kernel on the GPU.
     // The <<<1, 1>>> syntax specifies the execution configuration:
     // 1 block of threads, with 1 thread in that block.
-    hello_from_gpu<<<1, 1>>>();
+    hello_from_gpu<<<10, 1>>>();
 
     // Wait for the GPU to finish all its work before the CPU continues.
     // This is crucial to see the output from the GPU before the program exits.
