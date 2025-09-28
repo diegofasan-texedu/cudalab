@@ -10,7 +10,8 @@ SRCS = $(wildcard src/*.cu)
 INC = ./src/
 
 # Compiler flags
-NVCCFLAGS = -std=c++17 
+# -Xcompiler is used to pass flags like -Wall and -Werror to the host compiler (g++)
+NVCCFLAGS = -std=c++17 -Xcompiler -Wall -Xcompiler -Werror -O3
 
 # Target executable name
 EXEC = bin/kmeans
