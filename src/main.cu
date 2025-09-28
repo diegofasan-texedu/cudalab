@@ -1,19 +1,9 @@
 #include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h> // For getopt()
 
-
-/**
- * A CUDA kernel that is executed on the GPU.
- * The __global__ specifier indicates that this function runs on the device
- * and can be called from host code.
- */
-__global__ void hello_from_gpu() {
-    // printf is executed on the GPU and prints to the console.
-    printf("Hello World from the GPU!\n");
-}
+#include "kmeans.cuh"
 
 int main(int argc, char* argv[]) {
     // Default values for arguments
@@ -67,17 +57,8 @@ int main(int argc, char* argv[]) {
     std::cout << "Seed (-s): " << seed << std::endl;
     std::cout << "------------------------" << std::endl;
 
-
-    // This part of the code runs on the CPU (the host).
-    std::cout << "Hello World from the CPU!" << std::endl;
-
-    // Launch the kernel on the GPU.
-    // 10 blocks of threads, with 1 thread in each block.
-    hello_from_gpu<<<10, 1>>>();
-
-    // Wait for the GPU to finish all its work before the CPU continues.
-    // This is crucial to see the output from the GPU before the program exits.
-    cudaDeviceSynchronize();
+    // Call the main k-means logic
+    kmeans(num_cluster, dims, inputfilename, max_num_iter, threshold, output_centroids_flag, seed);
 
     return 0;
 }
