@@ -12,6 +12,7 @@ struct KMeansParams {
     double threshold = 0.001;
     bool output_centroids_flag = false;
     int seed = 0;
+    bool verbose = false;
 };
 
 /**
