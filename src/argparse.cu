@@ -6,6 +6,13 @@
 #include <unistd.h> // For getopt()
 
 bool parse_args(int argc, char* argv[], KMeansParams& params) {
+    // If no arguments are provided, print usage and exit.
+    if (argc == 1) {
+        fprintf(stderr, "No arguments provided. Please specify the required parameters.\n");
+        fprintf(stderr, "Usage: %s -k num_cluster -d dims -i inputfile [-m max_iter] [-t threshold] [-c] [-s seed]\n", argv[0]);
+        return false;
+    }
+
     int opt;
     while ((opt = getopt(argc, argv, "k:d:i:m:t:cs:")) != -1) {
         switch (opt) {
