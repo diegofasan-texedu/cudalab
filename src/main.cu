@@ -30,7 +30,8 @@ int main(int argc, char* argv[]) {
            params.threshold,
            params.output_centroids_flag,
            params.seed,
-           params.verbose);
+           params.verbose,
+           params.method);
 
     // --- Manual Cleanup ---
     // Since the DataSet destructor is removed, we must free memory here.

@@ -1,6 +1,7 @@
 #ifndef KMEANS_CUH
 #define KMEANS_CUH
 
+#include "argparse.cuh"
 #include "dataset.cuh"
 
 /**
@@ -13,6 +14,6 @@
  * @param seed Seed for random number generation.
  * @param verbose Flag to enable verbose output.
  */
-void kmeans(int num_cluster, DataSet& data, int max_num_iter, double threshold, bool output_centroids_flag, int seed, bool verbose);
+void kmeans(int num_cluster, DataSet& data, int max_num_iter, double threshold, bool output_centroids_flag, int seed, bool verbose, ExecutionMethod method);
 
 #endif // KMEANS_CUH

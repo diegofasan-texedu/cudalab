@@ -1,6 +1,7 @@
 #include "argparse.cuh"
 
 #include <iostream>
+#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h> // For getopt()
@@ -9,12 +10,12 @@ bool parse_args(int argc, char* argv[], KMeansParams& params) {
     // If no arguments are provided, print usage and exit.
     if (argc == 1) {
         fprintf(stderr, "No arguments provided. Please specify the required parameters.\n");
-        fprintf(stderr, "Usage: %s -k num_cluster -d dims -i inputfile [-m max_iter] [-t threshold] [-c] [-s seed] [-v]\n", argv[0]);
+        fprintf(stderr, "Usage: %s -k num_cluster -d dims -i inputfile -e method [-m max_iter] [-t threshold] [-c] [-s seed] [-v]\n", argv[0]);
         return false;
     }
 
     int opt;
-    while ((opt = getopt(argc, argv, "k:d:i:m:t:cs:v")) != -1) {
+    while ((opt = getopt(argc, argv, "k:d:i:e:m:t:cs:v")) != -1) {
         switch (opt) {
             case 'k':
                 params.num_cluster = atoi(optarg);
@@ -40,10 +41,30 @@ bool parse_args(int argc, char* argv[], KMeansParams& params) {
             case 'v':
                 params.verbose = true;
                 break;
+            case 'e':
+                if (strcmp(optarg, "seq") == 0) {
+                    params.method = ExecutionMethod::SEQ;
+                } else if (strcmp(optarg, "cuda") == 0) {
+                    params.method = ExecutionMethod::CUDA;
+                } else if (strcmp(optarg, "thrust") == 0) {
+                    params.method = ExecutionMethod::THRUST;
+                } else {
+                    fprintf(stderr, "Invalid method '%s'. Choose from 'seq', 'cuda', or 'thrust'.\n", optarg);
+                    return false;
+                }
+                break;
             default: /* '?' */
-                fprintf(stderr, "Usage: %s -k num_cluster -d dims -i inputfile [-m max_iter] [-t threshold] [-c] [-s seed] [-v]\n", argv[0]);
+                fprintf(stderr, "Usage: %s -k num_cluster -d dims -i inputfile -e method [-m max_iter] [-t threshold] [-c] [-s seed] [-v]\n", argv[0]);
                 return false;
         }
+    }
+
+    // --- Validation for Required Arguments ---
+    // Check if the execution method was specified.
+    if (params.method == ExecutionMethod::UNSPECIFIED) {
+        fprintf(stderr, "Error: Required argument -e <method> is missing.\n");
+        fprintf(stderr, "Choose from 'seq', 'cuda', or 'thrust'.\n");
+        return false;
     }
 
     // If verbose flag is set, print parsed arguments to verify
@@ -56,6 +77,22 @@ bool parse_args(int argc, char* argv[], KMeansParams& params) {
         std::cout << "Threshold (-t): " << params.threshold << std::endl;
         std::cout << "Output Centroids Flag (-c): " << (params.output_centroids_flag ? "true" : "false") << std::endl;
         std::cout << "Seed (-s): " << params.seed << std::endl;
+        std::cout << "Method (-e): ";
+        switch (params.method) {
+            case ExecutionMethod::SEQ:
+                std::cout << "seq";
+                break;
+            case ExecutionMethod::CUDA:
+                std::cout << "cuda";
+                break;
+            case ExecutionMethod::THRUST:
+                std::cout << "thrust";
+                break;
+            case ExecutionMethod::UNSPECIFIED:
+                std::cout << "UNSPECIFIED (Error)";
+                break;
+        }
+        std::cout << std::endl;
         std::cout << "------------------------" << std::endl;
     }
 
