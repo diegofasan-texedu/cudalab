@@ -1,5 +1,4 @@
 // Include headers for k-means implementations
-#include "sequential_kmeans.cuh"
 #include "cuda_kmeans.cuh"
 #include "thrust_kmeans.cuh"
 
