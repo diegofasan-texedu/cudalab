@@ -5,7 +5,6 @@
 #include "argparse.cuh"
 #include "io.cuh"
 #include "dataset.cuh"
-#include "utils.cuh" // For CUDA error checking
 #include "kmeans_kernel.cuh" // For CUDA kernels
 
 #include <stdio.h>
