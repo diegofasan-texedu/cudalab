@@ -1,7 +1,3 @@
-// Include headers for k-means implementations
-#include "sequential_kmeans.cuh"
-#include "thrust_kmeans.cuh"
-
 // Include headers for program setup
 #include "argparse.cuh"
 #include "io.cuh"
