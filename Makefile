@@ -9,7 +9,10 @@ EXEC = bin/kmeans
 SRCS = src/kmeans.cpp \
        src/argparse.cu \
        src/io.cu \
-       src/dataset.cu 
+       src/dataset.cu \
+       src/sequential_kmeans.cu \
+       src/thrust_kmeans.cu \
+       src/kmeans_kernel.cu 
 
 # Compiler flags
 NVCCFLAGS = -std=c++17 -O3 -Isrc
