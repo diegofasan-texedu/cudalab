@@ -1,12 +1,12 @@
 #include "kmeans_kernel.cuh"
 #include <cuda_runtime.h>
-#include <limits>
+#include <cfloat> // For DBL_MAX
 
 __global__ void assign_clusters_kernel(const double* points, const double* centroids, int* cluster_assignments, const int num_points, const int num_clusters, const int dims) {
     int point_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (point_idx < num_points) {
-        double min_dist_sq = std::numeric_limits<double>::max();
+        double min_dist_sq = DBL_MAX;
         int best_cluster = -1;
 
         for (int c = 0; c < num_clusters; ++c) {
