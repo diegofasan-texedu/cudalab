@@ -5,10 +5,10 @@
 
 /**
  * filename The path to the input file.
- * @param data A reference to a DataSet struct to be populated.
+ * @param data A reference to a KmeansData struct to be populated.
  * @param verbose A flag to enable verbose output during the reading process.
  * @return true if the file was read successfully, false otherwise.
  */
-bool read_points(const char* filename, DataSet& data, bool verbose);
+bool read_points(const char* filename, KmeansData& data, bool verbose);
 
 #endif // IO_CUH

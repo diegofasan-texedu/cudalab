@@ -4,21 +4,32 @@
 #include <cuda_runtime.h>
 
 /**
- * @brief A struct to hold the dataset for k-means.
- *
- * This struct encapsulates the data points, number of points, and dimensions.
- * It manages the memory for the points array, deallocating it upon destruction.
+ * @brief A struct to hold all data related to the k-means algorithm.
  */
-struct DataSet {
+struct KmeansData {
+    // Point data
     int num_points = 0;
     int dims = 0;
-
-    // Pointers to the matrix data (num_points x dims)
     double* h_points = nullptr; // on the host (CPU)
     double* d_points = nullptr; // on the device (GPU)
 
-    // Print a sample of the dataset
-    void print() const;
+    // Centroid data
+    int num_centroids = 0;
+    double* h_centroids = nullptr; // on the host (CPU)
+    double* d_centroids = nullptr; // on the device (GPU)
+
+    // Print a sample of the points
+    void print_points() const;
+
+    // Print a sample of the centroids
+    void print_centroids() const;
 };
+
+/**
+ * @param data The KmeansData struct to be initialized.
+ * @param num_centroids The number of centroids to initialize (k).
+ * @param seed The seed for the random number generator.
+ */
+void initialize_centroids(KmeansData& data, int num_centroids, unsigned int seed);
 
 #endif // DATASET_CUH

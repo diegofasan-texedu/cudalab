@@ -4,7 +4,7 @@
 #include <fstream>
 #include <vector>
 
-bool read_points(const char* filename, DataSet& data, bool verbose) {
+bool read_points(const char* filename, KmeansData& data, bool verbose) {
     std::ifstream infile(filename);
     if (!infile.is_open()) {
         std::cerr << "Error: Could not open input file " << filename << std::endl;

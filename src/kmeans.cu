@@ -8,7 +8,7 @@
 #include <iostream>
 #include <stdio.h>
 
-void kmeans(int num_cluster, DataSet& data, int max_num_iter, double threshold, bool output_centroids_flag, int seed, bool verbose, ExecutionMethod method) {
+void kmeans(int num_cluster, KmeansData& data, int max_num_iter, double threshold, bool output_centroids_flag, int seed, bool verbose, ExecutionMethod method) {
     // Use a switch to dispatch to the correct k-means implementation
     // based on the selected method.
     switch (method) {
