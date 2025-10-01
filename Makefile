@@ -21,7 +21,7 @@ all: clean compile
 
 compile:
 	mkdir -p $(dir $(EXEC))
-	$(NVCC) $(SRCS) $(NVCCFLAGS) -I$(INC) -o $(EXEC)
+	$(NVCC) $(SRCS) $(NVCCFLAGS) -I $(INC) -o $(EXEC)
 
 clean:
 	rm -f $(EXEC)

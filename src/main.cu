@@ -20,6 +20,9 @@ int main(int argc, char* argv[]) {
         return 1; // Exit if data reading fails
     }
 
+    // Print a sample of the loaded data if in verbose mode
+    if (params.verbose) data.print();
+
     // Call the main k-means logic
     kmeans(params.num_cluster, // Pass num_cluster
            data,               // Pass the DataSet object
@@ -29,11 +32,10 @@ int main(int argc, char* argv[]) {
            params.seed,
            params.verbose);
 
-    // --- Manual Cleanup of DataSet ---
+    // --- Manual Cleanup ---
+    // Since the DataSet destructor is removed, we must free memory here.
     delete[] data.h_points;
-    data.h_points = nullptr;
-    cudaFree(data.d_points); // Safe to call on nullptr
-    data.d_points = nullptr;
+    // cudaFree(data.d_points); // Device memory not yet allocated.
 
     return 0;
 }

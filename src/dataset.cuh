@@ -17,6 +17,8 @@ struct DataSet {
     double* h_points = nullptr; // on the host (CPU)
     double* d_points = nullptr; // on the device (GPU)
 
+    // Print a sample of the dataset
+    void print() const;
 };
 
 #endif // DATASET_CUH
