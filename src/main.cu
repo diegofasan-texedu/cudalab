@@ -31,7 +31,7 @@ int main(int argc, char* argv[]) {
 
     // Call the main k-means logic
     kmeans(params.num_cluster,
-           data,               // Pass the DataSet object
+           data,               // Pass the KmeansData object
            params.max_num_iter,
            params.threshold,
            params.output_centroids_flag,

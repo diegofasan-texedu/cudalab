@@ -19,7 +19,7 @@ void kmeans_srand(unsigned int seed) {
 // -----------------------------------------
 
 void KmeansData::print_points() const {
-    std::cout << "--- DataSet Sample ---" << std::endl;
+    std::cout << "--- KmeansData Points Sample ---" << std::endl;
     std::cout << "Points: " << num_points << ", Dimensions: " << dims << std::endl;
 
     if (h_points == nullptr) {

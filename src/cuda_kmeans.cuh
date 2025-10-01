@@ -3,6 +3,6 @@
 
 #include "dataset.cuh"
 
-void cuda_kmeans(int num_cluster, DataSet& data, int max_num_iter, double threshold, bool output_centroids_flag, int seed, bool verbose);
+void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double threshold, bool output_centroids_flag, int seed, bool verbose);
 
 #endif // CUDA_KMEANS_CUH
