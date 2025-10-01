@@ -6,7 +6,7 @@ EXEC = bin/kmeans
 
 # Source files
 # nvcc will use the host compiler (like g++) for .cpp files automatically.
-SRCS = src/kmeans.cpp \
+SRCS = src/kmeans.cu \
        src/argparse.cu \
        src/io.cu \
        src/dataset.cu \
