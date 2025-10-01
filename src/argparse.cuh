@@ -2,6 +2,13 @@
 #define ARGPARSE_CUH
 
 /**
+ * @brief Enum to specify the k-means implementation method.
+ */
+enum ExecutionMethod {
+    UNSPECIFIED, SEQ, CUDA, THRUST
+};
+
+/**
  * @brief A struct to hold the parameters for the k-means algorithm.
  */
 struct KMeansParams {
@@ -13,6 +20,7 @@ struct KMeansParams {
     bool output_centroids_flag = false;
     int seed = 0;
     bool verbose = false;
+    ExecutionMethod method = UNSPECIFIED;
 };
 
 /**
