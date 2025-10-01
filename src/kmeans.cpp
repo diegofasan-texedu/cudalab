@@ -6,8 +6,10 @@
 #include "io.cuh"
 #include "dataset.cuh"
 #include "kmeans_kernel.cuh" // For CUDA kernels
+#include "error.cuh"         // For HANDLE_CUDA_ERROR
 
 #include <stdio.h>
+#include <iostream>
 
 void sequential_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double threshold, bool output_centroids_flag, int seed, bool verbose) {
     if (verbose) {
