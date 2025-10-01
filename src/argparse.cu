@@ -79,16 +79,16 @@ bool parse_args(int argc, char* argv[], KMeansParams& params) {
         std::cout << "Seed (-s): " << params.seed << std::endl;
         std::cout << "Method (-e): ";
         switch (params.method) {
-            case ExecutionMethod::SEQ:
+            case SEQ:
                 std::cout << "seq";
                 break;
-            case ExecutionMethod::CUDA:
+            case CUDA:
                 std::cout << "cuda";
                 break;
-            case ExecutionMethod::THRUST:
+            case THRUST:
                 std::cout << "thrust";
                 break;
-            case ExecutionMethod::UNSPECIFIED:
+            case UNSPECIFIED:
                 std::cout << "UNSPECIFIED (Error)";
                 break;
         }
