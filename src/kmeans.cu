@@ -1,20 +1,29 @@
 #include "kmeans.cuh"
 
+// Include headers for the different implementations
+#include "sequential_kmeans.cuh"
+#include "cuda_kmeans.cuh"
+#include "thrust_kmeans.cuh"
+
 #include <iostream>
 #include <stdio.h>
 
 void kmeans(int num_cluster, DataSet& data, int max_num_iter, double threshold, bool output_centroids_flag, int seed, bool verbose, ExecutionMethod method) {
-    // The 'data' object is now prepared and passed in by the caller (main).
-    // The dimensions and number of points can be accessed via data.dims and data.num_points.
-
-    // Future logic will go here:
-    // 1. Use a switch on 'method' to call the correct implementation
-    //    switch (method) {
-    //        case SEQ: // call sequential_kmeans(...)
-    //        case CUDA: // call cuda_kmeans(...)
-    //        case THRUST: // call thrust_kmeans(...)
-    //    }
-    // 2. Allocate memory on host and device
-    // 3. Implement the k-means iteration loop
-    // Cleanup is now handled by the caller.
+    // Use a switch to dispatch to the correct k-means implementation
+    // based on the selected method.
+    switch (method) {
+        case SEQ:
+            sequential_kmeans(num_cluster, data, max_num_iter, threshold, output_centroids_flag, seed, verbose);
+            break;
+        case CUDA:
+            cuda_kmeans(num_cluster, data, max_num_iter, threshold, output_centroids_flag, seed, verbose);
+            break;
+        case THRUST:
+            thrust_kmeans(num_cluster, data, max_num_iter, threshold, output_centroids_flag, seed, verbose);
+            break;
+        case UNSPECIFIED:
+            // This case should ideally not be reached due to argument parsing validation.
+            fprintf(stderr, "Error: Execution method is unspecified.\n");
+            break;
+    }
 }
