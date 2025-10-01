@@ -6,7 +6,7 @@
 #include "io.cuh"
 #include "dataset.cuh"
 #include "kmeans_kernel.cuh" // For CUDA kernels
-#include "error.cuh"         // For HANDLE_CUDA_ERROR
+
 
 #include <stdio.h>
 #include <iostream>
