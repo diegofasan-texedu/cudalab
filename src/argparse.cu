@@ -43,11 +43,11 @@ bool parse_args(int argc, char* argv[], KMeansParams& params) {
                 break;
             case 'e':
                 if (strcmp(optarg, "seq") == 0) {
-                    params.method = ExecutionMethod::SEQ;
+                    params.method = SEQ;
                 } else if (strcmp(optarg, "cuda") == 0) {
-                    params.method = ExecutionMethod::CUDA;
+                    params.method = CUDA;
                 } else if (strcmp(optarg, "thrust") == 0) {
-                    params.method = ExecutionMethod::THRUST;
+                    params.method = THRUST;
                 } else {
                     fprintf(stderr, "Invalid method '%s'. Choose from 'seq', 'cuda', or 'thrust'.\n", optarg);
                     return false;
@@ -61,7 +61,7 @@ bool parse_args(int argc, char* argv[], KMeansParams& params) {
 
     // --- Validation for Required Arguments ---
     // Check if the execution method was specified.
-    if (params.method == ExecutionMethod::UNSPECIFIED) {
+    if (params.method == UNSPECIFIED) {
         fprintf(stderr, "Error: Required argument -e <method> is missing.\n");
         fprintf(stderr, "Choose from 'seq', 'cuda', or 'thrust'.\n");
         return false;

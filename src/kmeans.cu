@@ -10,9 +10,9 @@ void kmeans(int num_cluster, DataSet& data, int max_num_iter, double threshold, 
     // Future logic will go here:
     // 1. Use a switch on 'method' to call the correct implementation
     //    switch (method) {
-    //        case ExecutionMethod::SEQ: // call sequential_kmeans(...)
-    //        case ExecutionMethod::CUDA: // call cuda_kmeans(...)
-    //        case ExecutionMethod::THRUST: // call thrust_kmeans(...)
+    //        case SEQ: // call sequential_kmeans(...)
+    //        case CUDA: // call cuda_kmeans(...)
+    //        case THRUST: // call thrust_kmeans(...)
     //    }
     // 2. Allocate memory on host and device
     // 3. Implement the k-means iteration loop
