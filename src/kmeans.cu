@@ -80,6 +80,12 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
 
         // b) Sum up points for each cluster using global atomics.
         sum_points_for_clusters_kernel<<<point_blocks, threads_per_block>>>(data.d_points, d_cluster_assignments, d_centroid_sums, d_cluster_counts, num_points, dims);
+        // Launch one block per cluster. Each block will calculate its new centroid.
+        int threads_per_block_update = 256;
+        int cluster_blocks = num_cluster;
+        // Calculate shared memory size: space for `dims` doubles (sum) and 1 int (count).
+        size_t shared_mem_size = (dims * sizeof(double)) + sizeof(int);
+        update_centroids_kernel<<<cluster_blocks, threads_per_block_update, shared_mem_size>>>(data.d_points, d_cluster_assignments, data.d_centroids, num_points, num_cluster, dims);
         HANDLE_CUDA_ERROR(cudaGetLastError());
 
         // c) Average the sums to get the new centroids.
