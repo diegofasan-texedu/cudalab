@@ -1,6 +1,5 @@
 // Include headers for k-means implementations
 #include "sequential_kmeans.cuh"
-#include "cuda_kmeans.cuh"
 #include "thrust_kmeans.cuh"
 
 // Include headers for program setup
@@ -19,7 +18,7 @@ void kmeans(int num_cluster, KmeansData& data, int max_num_iter, double threshol
             sequential_kmeans(num_cluster, data, max_num_iter, threshold, output_centroids_flag, seed, verbose);
             break;
         case CUDA:
-            cuda_kmeans(num_cluster, data, max_num_iter, threshold, output_centroids_flag, seed, verbose);
+            cuda_kmeans(num_cluster, data, max_num_iter, threshold, output_centroids_flag, verbose);
             break;
         case THRUST:
             thrust_kmeans(num_cluster, data, max_num_iter, threshold, output_centroids_flag, seed, verbose);
@@ -29,6 +28,16 @@ void kmeans(int num_cluster, KmeansData& data, int max_num_iter, double threshol
             fprintf(stderr, "Error: Execution method is unspecified.\n");
             break;
     }
+}
+
+void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double threshold, bool output_centroids_flag, bool verbose) {
+    if (verbose) {
+        std::cout << "Executing CUDA K-Means..." << std::endl;
+    }
+
+    // The implementation for the CUDA k-means algorithm will go here.
+    // For now, it's a placeholder.
+    std::cout << "CUDA implementation is not yet complete." << std::endl;
 }
 
 int main(int argc, char* argv[]) {
