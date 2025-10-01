@@ -5,5 +5,8 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
     if (verbose) {
         std::cout << "Executing CUDA K-Means..." << std::endl;
     }
-    // TODO: Implement the CUDA k-means algorithm here.
+    
+    // start cuda method
+    
+
 }
