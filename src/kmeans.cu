@@ -174,12 +174,6 @@ int main(int argc, char* argv[]) {
            params.verbose,
            params.method);
 
-    // If requested, print the final centroids after the computation is complete.
-    if (params.output_centroids_flag) {
-        std::cout << "\n--- Final Centroids ---" << std::endl;
-        data.print_centroids();
-    }
-
     // Free all host-side memory.
     delete[] data.h_points;
     delete[] data.h_centroids;

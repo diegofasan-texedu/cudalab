@@ -1,8 +1,10 @@
 #include "dataset.cuh"
 
 #include <iostream>
-#include <algorithm> // For std::min
-#include <string.h>  // For memcpy
+#include <vector>
+#include <random>
+#include <algorithm> // For std::min, std::shuffle
+#include <iomanip> // For std::fixed and std::setprecision
 
 // --- Simple LCG Random Number Generator ---
 static unsigned long int next_rand = 1;
@@ -19,41 +21,42 @@ void kmeans_srand(unsigned int seed) {
 // -----------------------------------------
 
 void KmeansData::print_points() const {
-    std::cout << "--- KmeansData Points Sample ---" << std::endl;
-    std::cout << "Points: " << num_points << ", Dimensions: " << dims << std::endl;
+    std::cout << "Displaying a sample of points (" << num_points << " total points, " << dims << " dimensions):\n";
 
     if (h_points == nullptr) {
         std::cout << "Host data is not allocated." << std::endl;
-    } else {
-        int points_to_print = std::min(5, num_points);
-        for (int i = 0; i < points_to_print; ++i) {
-            std::cout << "Point " << i << ": ";
-            for (int j = 0; j < dims; ++j) {
-                std::cout << h_points[i * dims + j] << " ";
-            }
-            std::cout << std::endl;
-        }
+        return;
     }
-    std::cout << "----------------------" << std::endl;
+
+    int limit = std::min(5, num_points);
+    for (int i = 0; i < limit; ++i) {
+        std::cout << "  Point " << i << ": [";
+        for (int d = 0; d < dims; ++d) {
+            std::cout << std::fixed << std::setprecision(4) << h_points[i * dims + d] << (d == dims - 1 ? "" : ", ");
+        }
+        std::cout << "]\n";
+    }
+    if (num_points > limit) {
+        std::cout << "  ...\n";
+    }
 }
 
 void KmeansData::print_centroids() const {
-    std::cout << "--- Centroids Sample ---" << std::endl;
-    std::cout << "Centroids: " << num_centroids << ", Dimensions: " << dims << std::endl;
+    std::cout << "Displaying all " << num_centroids << " centroids (" << dims << " dimensions):\n";
 
     if (h_centroids == nullptr) {
         std::cout << "Host data is not allocated." << std::endl;
-    } else {
-        int centroids_to_print = std::min(5, num_centroids);
-        for (int i = 0; i < centroids_to_print; ++i) {
-            std::cout << "Centroid " << i << ": ";
-            for (int j = 0; j < dims; ++j) {
-                std::cout << h_centroids[i * dims + j] << " ";
-            }
-            std::cout << std::endl;
-        }
+        return;
     }
-    std::cout << "------------------------" << std::endl;
+
+    for (int i = 0; i < num_centroids; ++i) {
+        std::cout << "  Centroid " << i << ": [";
+        for (int d = 0; d < dims; ++d) {
+            // Accessing the centroid data: h_centroids[centroid_index * num_dimensions + dimension_index]
+            std::cout << std::fixed << std::setprecision(4) << h_centroids[i * dims + d] << (d == dims - 1 ? "" : ", ");
+        }
+        std::cout << "]\n";
+    }
 }
 
 void initialize_centroids(KmeansData& data, int num_centroids, unsigned int seed) {
@@ -61,16 +64,21 @@ void initialize_centroids(KmeansData& data, int num_centroids, unsigned int seed
     data.num_centroids = num_centroids;
 
     // Allocate memory for host-side centroids
-    size_t centroids_size = (size_t)num_centroids * data.dims * sizeof(double);
+    // size_t centroids_size = (size_t)num_centroids * data.dims * sizeof(double);
     data.h_centroids = new double[num_centroids * data.dims];
 
     // Seed the random number generator
     kmeans_srand(seed);
+    std::vector<int> indices(data.num_points);
+    // std::iota(indices.begin(), indices.end(), 0); // Fill with 0, 1, 2, ...
 
     // Randomly select k points from the dataset to be the initial centroids
     for (int i = 0; i < num_centroids; i++) {
         // Generate a random index in the range [0, num_points-1]
         int point_index = kmeans_rand() % data.num_points;
+    // Shuffle indices to select unique random points
+    // std::mt19937 gen(seed);
+    // std::shuffle(indices.begin(), indices.end(), gen);
 
         // Use a pointer to refer to the destination centroid's location
         double* dest_centroid = &data.h_centroids[i * data.dims];
@@ -79,6 +87,13 @@ void initialize_centroids(KmeansData& data, int num_centroids, unsigned int seed
         double* src_point = &data.h_points[point_index * data.dims];
 
         // Copy the point data to the centroid location
-        memcpy(dest_centroid, src_point, data.dims * sizeof(double));
+        memcpy(dest_centroid, src_point, data.dims * sizeof(double)); // Requires <string.h>
+    // Copy the first 'num_centroids' random points to be the initial centroids
+    // for (int i = 0; i < num_centroids; ++i) {
+    //     int point_idx = indices[i];
+    //     for (int d = 0; d < data.dims; ++d) {
+    //         data.h_centroids[i * data.dims + d] = data.h_points[point_idx * data.dims + d];
+    //     }
+    // }
     }
 }
