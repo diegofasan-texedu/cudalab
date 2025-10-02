@@ -57,7 +57,7 @@ def run_executable():
     # This example assumes an input file at 'data/points_2d_1000.txt'
     # with 2 dimensions. Adjust these values for your dataset.
     args = [
-        "-i", "inputs/random-n2048-d16-c16.txt.txt", # Input file
+        "-i", "inputs/random-n2048-d16-c16.txt", # Input file
         "-k", "16",                       # Number of clusters
         "-d", "16",                       # Dimensions of data
         "-e", "cuda",                    # Execution method: cuda, seq, or thrust
