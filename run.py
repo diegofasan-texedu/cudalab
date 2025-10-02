@@ -46,11 +46,15 @@ def parse_centroids(output_text):
                 print(f"Warning: Could not parse numbers in line: {line}")
     return centroids
 
-def read_answer_file(filepath):
-    """Reads a file of points and returns a list of lists."""
+# def read_answer_file(filepath):
+#     """Reads a file of points and returns a list of lists."""
+def read_points_file(filepath):
+    """Reads a data file of points, skipping the header line."""
     if not os.path.exists(filepath):
-        print(f"Error: Answer file not found at '{filepath}'")
-        return None
+        # print(f"Error: Answer file not found at '{filepath}'")
+        # return None
+        print(f"Error: Data file not found at '{filepath}'")
+        return []
     
     points = []
     with open(filepath, 'r') as f:
@@ -71,6 +75,29 @@ def read_answer_file(filepath):
                     print(f"Warning: Could not parse numbers in data file line {i+2}: {line}")
         except (IOError, ValueError) as e:
             print(f"Error reading point file '{filepath}': {e}")
+    return points
+
+def read_answer_file(filepath):
+    """Reads a file of centroids (answers) and returns a list of lists."""
+    if not os.path.exists(filepath):
+        print(f"Error: Answer file not found at '{filepath}'")
+        return None
+    
+    points = []
+    with open(filepath, 'r') as f:
+        # The answer file does not have a header line with the count.
+        # It starts directly with the centroid data.
+        for i, line in enumerate(f):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                # The answer file has a leading index for each centroid.
+                # We split the line and take all but the first element.
+                point = [float(n) for n in line.split()[1:]]
+                points.append(point)
+            except (ValueError, IndexError):
+                print(f"Warning: Could not parse numbers in answer file line {i+1}: {line}")
     return points
 
 def compare_centroids(calculated, answers, tolerance=1e-6):
@@ -226,7 +253,8 @@ def run_executable():
                 print(f"  Centroid {i}: [{centroid_str}, ...]")
 
             # --- Load original points for validation ---
-            points = read_answer_file(input_file) # Using read_answer_file as it reads points
+            # points = read_answer_file(input_file) # Using read_answer_file as it reads points
+            points = read_points_file(input_file)
 
             # --- New Validation Method as Requested ---
             if points:
