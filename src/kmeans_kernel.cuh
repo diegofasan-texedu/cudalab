@@ -54,4 +54,16 @@ __global__ void reduce_partial_sums_kernel(const double* partial_centroid_sums, 
  */
 __global__ void average_clusters_kernel(double* centroids, const double* centroid_sums, const int* cluster_counts, int num_clusters, int dims);
 
+/**
+ * @brief Checks if the centroids have moved less than a given threshold.
+ *
+ * Each thread processes one cluster. It calculates the squared Euclidean distance
+ * between the old and new centroid positions. If this distance exceeds the
+ * squared threshold for any centroid, a convergence flag is set to 0 (false).
+ *
+ * @param threshold_sq The squared convergence threshold.
+ */
+__global__ void check_convergence_kernel(const double* old_centroids, const double* new_centroids, int* converged_flag, int num_clusters, int dims, double threshold_sq);
+
+
 #endif // KMEANS_KERNEL_CUH
