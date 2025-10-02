@@ -135,41 +135,38 @@ def compare_centroids(calculated, answers, tolerance=1e-6):
     print(f"Validation Successful! All centroid pairs are within tolerance. Total distance: {total_distance:.6f}")
     return True
 
-def validate_point_assignments(points, final_centroids, threshold=1e-5):
+def calculate_sse(points, centroids):
     """
-    Validates the k-means result based on the user's specified method.
+    Calculates the Sum of Squared Errors (SSE) for a given set of points and centroids.
+    SSE is the sum of the squared distances of each point to its closest centroid.
     """
-    print("\n--- Validating Point Assignments ---")
     points_np = np.array(points)
-    centroids_np = np.array(final_centroids)
-
-    # 1. For each point, find its closest centroid from the final set.
-    # This gives us the 'optimal' assignment for each point.
+    centroids_np = np.array(centroids)
+    
+    # Calculate squared distances from each point to each centroid
     dist_sq = np.sum((points_np[:, np.newaxis, :] - centroids_np[np.newaxis, :, :])**2, axis=2)
-    dis0 = np.min(dist_sq, axis=1) # dis0 is the distance to the closest centroid.
+    
+    # For each point, find the minimum squared distance to any centroid
+    min_dist_sq = np.min(dist_sq, axis=1)
+    
+    # The SSE is the sum of these minimum squared distances
+    return np.sum(min_dist_sq)
 
-    # 2. Re-calculate centroids based on these optimal assignments.
-    optimal_assignments = np.argmin(dist_sq, axis=1)
-    num_clusters = len(centroids_np)
-    recalculated_centroids = np.array([points_np[optimal_assignments == k].mean(axis=0) for k in range(num_clusters)])
-
-    # 3. For each point, find the distance to its re-calculated centroid.
-    dis1 = np.array([np.sum((points_np[i] - recalculated_centroids[optimal_assignments[i]])**2) for i in range(len(points_np))])
-
-    # 4. Check if dis0 and dis1 are close.
-    diff = np.abs(dis0 - dis1)
-    wrong_points = np.where(diff > threshold)[0]
-
-    num_wrong = len(wrong_points)
-    if num_wrong == 0:
-        print(f"Assignment Validation Successful! All {len(points_np)} points are optimally placed.")
+def compare_clustering_quality(points, generated_centroids, answer_centroids, tolerance=1e-4):
+    """
+    Compares the quality of two different clusterings (generated vs. answer)
+    on the same point set by comparing their Sum of Squared Errors (SSE).
+    """
+    print("\n--- Validating Clustering Quality (SSE) ---")
+    sse_generated = calculate_sse(points, generated_centroids)
+    sse_answer = calculate_sse(points, answer_centroids)
+    
+    print(f"SSE from Generated Centroids: {sse_generated:.4f}")
+    print(f"SSE from Answer Centroids:    {sse_answer:.4f}")
+    if abs(sse_generated - sse_answer) <= tolerance * sse_answer:
+        print("Validation Successful: SSE is within tolerance of the answer's SSE.")
     else:
-        print(f"Assignment Validation Failed: Found {num_wrong} non-optimally placed points.")
-        for i, point_idx in enumerate(wrong_points[:50]):
-            print(f"  - Point {point_idx}: dis0_sq={dis0[point_idx]:.6f}, dis1_sq={dis1[point_idx]:.6f}, diff={diff[point_idx]:.6f}")
-        if num_wrong > 10:
-            print("  ...")
-    return num_wrong
+        print("Validation Failed: SSE differs significantly from the answer's SSE.")
 
 def run_executable():
     """Runs the compiled k-means executable with example arguments."""
@@ -217,20 +214,17 @@ def run_executable():
                 centroid_str = ", ".join([f"{x:.4f}" for x in centroid[:4]])
                 print(f"  Centroid {i}: [{centroid_str}, ...]")
 
-            # --- Load original points for validation ---
-            # points = read_answer_file(input_file) # Using read_answer_file as it reads points
-            points = read_points_file(input_file)
-
-            # --- New Validation Method as Requested ---
-            if points:
-                validate_point_assignments(points, final_centroids)
-
-            # --- Original Centroid Comparison (Optional) ---
+            # --- Load original points and answer centroids for validation ---
             answer_file = input_file.replace(".txt", "-answer.txt").replace("inputs/", "answers/")
-            print(f"\n--- Comparing Final Centroids against Answer File: {answer_file} ---")
             answer_centroids = read_answer_file(answer_file)
+            
             if answer_centroids:
+                # 1. Compare the final centroids directly to the answer centroids
+                print(f"\n--- Comparing Final Centroids against Answer File: {answer_file} ---")
                 compare_centroids(final_centroids, answer_centroids)
+                # 2. Compare the quality of the clustering (SSE)
+                points = read_points_file(input_file)
+                compare_clustering_quality(points, final_centroids, answer_centroids)
 
     except subprocess.CalledProcessError as e:
         print("\n>>> Execution Failed! <<<")
