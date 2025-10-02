@@ -122,7 +122,7 @@ def run_executable():
         "-e", "cuda",                    # Execution method: cuda, seq, or thrust
         "-t", "0.000000001",                  # Convergence threshold
         "-m", "150",                     # Max iterations
-        "-s", "10",                            # Output final centroids
+        "-s", "20",                            # Output final centroids
         # "-n", "500",                     # Max iterations
         # "-o",                            # Output final centroids
         "-v"                             # Verbose mode
