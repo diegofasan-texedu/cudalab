@@ -165,7 +165,7 @@ def validate_point_assignments(points, final_centroids, threshold=1e-5):
         print(f"Assignment Validation Successful! All {len(points_np)} points are optimally placed.")
     else:
         print(f"Assignment Validation Failed: Found {num_wrong} non-optimally placed points.")
-        for i, point_idx in enumerate(wrong_points[:10]):
+        for i, point_idx in enumerate(wrong_points[:50]):
             print(f"  - Point {point_idx}: dis0_sq={dis0[point_idx]:.6f}, dis1_sq={dis1[point_idx]:.6f}, diff={diff[point_idx]:.6f}")
         if num_wrong > 10:
             print("  ...")
