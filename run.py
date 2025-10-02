@@ -120,8 +120,8 @@ def run_executable():
         "-k", "16",                       # Number of clusters
         "-d", "32",                       # Dimensions of data
         "-e", "cuda",                    # Execution method: cuda, seq, or thrust
-        "-t", "0.0000001",                  # Convergence threshold
-        "-m", "5000",                     # Max iterations
+        "-t", "0.000001",                  # Convergence threshold
+        "-m", "150",                     # Max iterations
         "-s", "20",                            # Output final centroids
         # "-n", "500",                     # Max iterations
         # "-o",                            # Output final centroids
