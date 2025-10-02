@@ -143,7 +143,7 @@ def run_executable():
                 print(f"  Centroid {i}: [{centroid_str}, ...]")
 
             # --- Compare with Answer File ---
-            answer_file = input_file.replace(".txt", "-answer.txt")
+            answer_file = input_file.replace(".txt", "-answer.txt").replace("inputs","answers")
             print(f"\n--- Validating against {answer_file} ---")
             answer_centroids = read_answer_file(answer_file)
             if answer_centroids:
