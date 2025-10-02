@@ -69,33 +69,40 @@ __global__ void sum_points_for_clusters_kernel(const double* points,
         }
     }
 
-    // --- Stage 2: Parallel reduction of private sums into shared memory ---
-    // Each thread in the block will write its private sums for each cluster
-    // to shared memory, then we perform a reduction.
-    for (int i = threadIdx.x; i < num_clusters; i += blockDim.x) {
-        // Initialize shared memory for reduction
-        s_counts[i] = 0;
-        for (int d = 0; d < dims; d++) s_sums[i * dims + d] = 0.0;
-    }
-    __syncthreads();
-
-    for (int i = 0; i < num_clusters; ++i) {
-        atomicAdd(&s_counts[i], p_counts[i]); // Using atomics here is efficient for the final reduction
-        for (int d = 0; d < dims; d++) {
-            if (p_sums[i*dims+d] != 0.0) { // Avoid unnecessary atomic operations
-                atomicAdd(&s_sums[i * dims + d], p_sums[i * dims + d]);
-            }
-        }
-    }
-    __syncthreads();
-
-    // One thread per cluster dimension writes the partial result to global memory.
+    // --- Stage 2: Fully parallel reduction of private sums into shared memory (NO ATOMICS) ---
+    // Each thread is responsible for reducing one element of the final sum arrays.
+    // This loop iterates over all elements that this thread is responsible for.
     for (int i = threadIdx.x; i < num_clusters * dims; i += blockDim.x) {
-        partial_centroid_sums[blockIdx.x * num_clusters * dims + i] = s_sums[i];
+        // Step 1: Each thread writes its private contribution for this element to shared memory.
+        // We use shared memory as temporary storage for the reduction.
+        s_sums[i] = p_sums[i];
     }
-    // One thread per cluster writes the partial count to global memory.
     for (int i = threadIdx.x; i < num_clusters; i += blockDim.x) {
-        partial_cluster_counts[blockIdx.x * num_clusters + i] = s_counts[i];
+        s_counts[i] = p_counts[i];
+    }
+    __syncthreads();
+
+    // Step 2: Perform a tree-based reduction in shared memory.
+    // At each step, half the threads add a value from the other half.
+    for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (threadIdx.x < s) {
+            // Reduce the sums array
+            for (int i = threadIdx.x; i < num_clusters * dims; i += s) s_sums[i] += s_sums[i + s];
+            // Reduce the counts array
+            for (int i = threadIdx.x; i < num_clusters; i += s) s_counts[i] += s_counts[i + s];
+        }
+        __syncthreads();
+    }
+
+    // Step 3: After reduction, thread 0 holds the final sum for each element.
+    // It writes the block's total partial sum to global memory.
+    if (threadIdx.x == 0) {
+        for (int i = 0; i < num_clusters * dims; ++i) {
+            partial_centroid_sums[blockIdx.x * num_clusters * dims + i] = s_sums[i];
+        }
+        for (int i = 0; i < num_clusters; ++i) {
+            partial_cluster_counts[blockIdx.x * num_clusters + i] = s_counts[i];
+        }
     }
 }
 
