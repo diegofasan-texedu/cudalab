@@ -46,58 +46,38 @@ def parse_centroids(output_text):
                 print(f"Warning: Could not parse numbers in line: {line}")
     return centroids
 
-# def read_answer_file(filepath):
-#     """Reads a file of points and returns a list of lists."""
-def read_points_file(filepath):
-    """Reads a data file of points, skipping the header line."""
+def read_points_file(filepath, has_header=False):
+    """
+    Reads a file of points (or centroids) and returns a list of lists.
+    
+    Args:
+        filepath (str): The path to the file.
+        has_header (bool): If True, skips the first line (assumed to be a point count).
+    """
     if not os.path.exists(filepath):
-        # print(f"Error: Answer file not found at '{filepath}'")
-        # return None
-        print(f"Error: Data file not found at '{filepath}'")
-        return []
+        print(f"Error: File not found at '{filepath}'")
+        return None
     
     points = []
     with open(filepath, 'r') as f:
-        # The first line of the input file is the number of points.
-        # The C++ code reads this, so the Python reader should skip it to match.
         try:
-            num_points = int(f.readline().strip())
+            if has_header:
+                f.readline() # Skip header line
+
             for i, line in enumerate(f):
                 line = line.strip()
                 if not line:
                     continue
                 try:
-                    # The data file has a leading index for each point.
+                    # Files have a leading index for each point/centroid.
                     # We split the line and take all but the first element.
                     point = [float(n) for n in line.split()[1:]]
                     points.append(point)
                 except (ValueError, IndexError):
-                    print(f"Warning: Could not parse numbers in data file line {i+2}: {line}")
+                    line_num = i + (2 if has_header else 1)
+                    print(f"Warning: Could not parse numbers in file '{filepath}' on line {line_num}: {line}")
         except (IOError, ValueError) as e:
             print(f"Error reading point file '{filepath}': {e}")
-    return points
-
-def read_answer_file(filepath):
-    """Reads a file of centroids (answers) and returns a list of lists."""
-    if not os.path.exists(filepath):
-        print(f"Error: Answer file not found at '{filepath}'")
-        return None
-    
-    points = []
-    with open(filepath, 'r') as f:
-        # The answer file does not have a header line with the count.
-        # It starts directly with the centroid data.
-        for i, line in enumerate(f):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                # The answer file has a leading index for each centroid.
-                # We split the line and take all but the first element.
-                point = [float(n) for n in line.split()[1:]]
-                points.append(point)
-            except (ValueError, IndexError):
-                print(f"Warning: Could not parse numbers in answer file line {i+1}: {line}")
     return points
 
 def compare_centroids(calculated, answers, tolerance=1e-6):
@@ -223,14 +203,14 @@ def run_executable():
 
             # --- Load original points and answer centroids for validation ---
             answer_file = input_file.replace(".txt", "-answer.txt").replace("inputs/", "answers/")
-            answer_centroids = read_answer_file(answer_file)
+            answer_centroids = read_points_file(answer_file, has_header=False)
             
             if answer_centroids:
                 # 1. Compare the final centroids directly to the answer centroids
                 print(f"\n--- Comparing Final Centroids against Answer File: {answer_file} ---")
                 compare_centroids(final_centroids, answer_centroids)
                 # 2. Validate the stability of the point assignments
-                points = read_points_file(input_file)
+                points = read_points_file(input_file, has_header=True)
                 validate_point_assignments(points, final_centroids)
 
     except subprocess.CalledProcessError as e:

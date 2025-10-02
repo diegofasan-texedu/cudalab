@@ -30,7 +30,7 @@ bool parse_args(int argc, char* argv[], KMeansParams& params) {
                 params.max_num_iter = atoi(optarg);
                 break;
             case 't':
-                params.threshold = atof(optarg);
+                params.threshold = strtof(optarg, NULL);
                 break;
             case 'c':
                 params.output_centroids_flag = true;
