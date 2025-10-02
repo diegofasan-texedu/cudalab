@@ -16,7 +16,7 @@
  * @param num_clusters Total number of clusters.
  * @param dims The dimensionality of each point.
  */
-__global__ void assign_clusters_kernel(const double* points, const double* centroids, int* cluster_assignments, int num_points, int num_clusters, int dims);
+__global__ void assign_clusters_kernel(const float* points, const float* centroids, int* cluster_assignments, int num_points, int num_clusters, int dims);
 
 /**
  * @brief Sums the coordinates of all points belonging to each cluster.
@@ -33,21 +33,21 @@ __global__ void assign_clusters_kernel(const double* points, const double* centr
  * @param num_clusters Total number of clusters.
  * @param dims The dimensionality of each point.
  */
-__global__ void sum_points_for_clusters_kernel(const double* points, const int* cluster_assignments, double* partial_centroid_sums, int* partial_cluster_counts, int num_points, int num_clusters, int dims);
+__global__ void sum_points_for_clusters_kernel(const float* points, const int* cluster_assignments, float* partial_centroid_sums, int* partial_cluster_counts, int num_points, int num_clusters, int dims);
 
 /**
  * @brief Reduces the partial sums from all blocks into a final sum.
  *
  * This is the second stage of the reduction. Each thread is responsible for
  * reducing the partial sums for one dimension of one cluster.
- *
+ * 
  * @param grid_size The number of blocks used in the first kernel (sum_points_for_clusters_kernel).
  */
-__global__ void reduce_partial_sums_kernel(const double* partial_centroid_sums, const int* partial_cluster_counts, double* final_centroid_sums, int* final_cluster_counts, int num_clusters, int dims, int grid_size);
+__global__ void reduce_partial_sums_kernel(const float* partial_centroid_sums, const int* partial_cluster_counts, float* final_centroid_sums, int* final_cluster_counts, int num_clusters, int dims, int grid_size);
 
 /**
  * @brief Calculates the new centroids by averaging the sums.
- *
+ * 
  * Each thread processes one cluster. It divides the sum of points for that cluster
  * by the number of points in it to get the new centroid. If a cluster is empty,
  * its centroid is not updated.
@@ -63,7 +63,7 @@ __global__ void average_clusters_kernel(double* centroids, const double* centroi
  *
  * @param threshold_sq The squared convergence threshold.
  */
-__global__ void check_convergence_kernel(const double* old_centroids, const double* new_centroids, int* converged_flag, int num_clusters, int dims, double threshold_sq);
+__global__ void check_convergence_kernel(const float* old_centroids, const float* new_centroids, int* converged_flag, int num_clusters, int dims, float threshold_sq);
 
 
 #endif // KMEANS_KERNEL_CUH

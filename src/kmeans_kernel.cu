@@ -1,8 +1,8 @@
 #include "kmeans_kernel.cuh"
-#include <float.h> // For DBL_MAX
+#include <float.h> // For FLT_MAX
 
-__global__ void assign_clusters_kernel(const double* points,
-                                       const double* centroids,
+__global__ void assign_clusters_kernel(const float* points,
+                                       const float* centroids,
                                        int* cluster_assignments,
                                        int num_points,
                                        int num_clusters,
@@ -10,15 +10,15 @@ __global__ void assign_clusters_kernel(const double* points,
     int point_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (point_idx < num_points) {
-        double min_dist = DBL_MAX;
+        float min_dist = FLT_MAX;
         int best_cluster = -1;
 
         // Find the closest centroid for the current point
         for (int cluster_idx = 0; cluster_idx < num_clusters; ++cluster_idx) {
-            double current_dist = 0.0;
+            float current_dist = 0.0f;
             // Calculate squared Euclidean distance
             for (int dim_idx = 0; dim_idx < dims; ++dim_idx) {
-                double diff = points[point_idx * dims + dim_idx] - centroids[cluster_idx * dims + dim_idx];
+                float diff = points[point_idx * dims + dim_idx] - centroids[cluster_idx * dims + dim_idx];
                 current_dist += diff * diff;
             }
 
@@ -31,9 +31,9 @@ __global__ void assign_clusters_kernel(const double* points,
     }
 }
 
-__global__ void sum_points_for_clusters_kernel(const double* points,
+__global__ void sum_points_for_clusters_kernel(const float* points,
                                                const int* cluster_assignments,
-                                               double* partial_centroid_sums,
+                                               float* partial_centroid_sums,
                                                int* partial_cluster_counts,
                                                int num_points,
                                                int num_clusters,
@@ -41,12 +41,12 @@ __global__ void sum_points_for_clusters_kernel(const double* points,
     // Using shared memory to store per-block sums to avoid global atomics.
     // This assumes `num_clusters * dims` is small enough for shared memory.
     // For larger `k` or `dims`, this would need a different strategy.
-    extern __shared__ double s_sums[];
+    extern __shared__ float s_sums[];
     int* s_counts = (int*)(&s_sums[num_clusters * dims]);
     
     // Initialize shared memory
     for (int i = threadIdx.x; i < num_clusters * dims; i += blockDim.x) {
-        s_sums[i] = 0.0;
+        s_sums[i] = 0.0f;
     }
     for (int i = threadIdx.x; i < num_clusters; i += blockDim.x) {
         s_counts[i] = 0;
@@ -76,9 +76,9 @@ __global__ void sum_points_for_clusters_kernel(const double* points,
     }
 }
 
-__global__ void reduce_partial_sums_kernel(const double* partial_centroid_sums,
+__global__ void reduce_partial_sums_kernel(const float* partial_centroid_sums,
                                            const int* partial_cluster_counts,
-                                           double* final_centroid_sums,
+                                           float* final_centroid_sums,
                                            int* final_cluster_counts,
                                            int num_clusters, int dims, int grid_size) {
     // Each thread is responsible for one element of the final sums/counts array.
@@ -86,7 +86,7 @@ __global__ void reduce_partial_sums_kernel(const double* partial_centroid_sums,
 
     // This thread handles one dimension of one cluster's sum
     if (global_idx < num_clusters * dims) {
-        double total_sum = 0;
+        float total_sum = 0.0f;
         for (int block_id = 0; block_id < grid_size; ++block_id) {
             total_sum += partial_centroid_sums[block_id * num_clusters * dims + global_idx];
         }
@@ -105,8 +105,8 @@ __global__ void reduce_partial_sums_kernel(const double* partial_centroid_sums,
     }
 }
 
-__global__ void average_clusters_kernel(double* centroids,
-                                        const double* centroid_sums,
+__global__ void average_clusters_kernel(float* centroids,
+                                        const float* centroid_sums,
                                         const int* cluster_counts,
                                         int num_clusters,
                                         int dims) {
@@ -125,19 +125,19 @@ __global__ void average_clusters_kernel(double* centroids,
     }
 }
 
-__global__ void check_convergence_kernel(const double* old_centroids,
-                                         const double* new_centroids,
+__global__ void check_convergence_kernel(const float* old_centroids,
+                                         const float* new_centroids,
                                          int* converged_flag,
                                          int num_clusters,
                                          int dims,
-                                         double threshold_sq) {
+                                         float threshold_sq) {
     int cluster_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (cluster_idx < num_clusters) {
-        double dist_sq = 0.0;
+        float dist_sq = 0.0f;
         // Calculate the squared Euclidean distance between the old and new centroid
         for (int d = 0; d < dims; ++d) {
-            double diff = old_centroids[cluster_idx * dims + d] - new_centroids[cluster_idx * dims + d];
+            float diff = old_centroids[cluster_idx * dims + d] - new_centroids[cluster_idx * dims + d];
             dist_sq += diff * diff;
         }
 

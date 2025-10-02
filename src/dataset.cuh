@@ -10,13 +10,13 @@ struct KmeansData {
     // Point data
     int num_points = 0;
     int dims = 0;
-    double* h_points = nullptr; // on the host (CPU)
-    double* d_points = nullptr; // on the device (GPU)
+    float* h_points = nullptr; // on the host (CPU)
+    float* d_points = nullptr; // on the device (GPU)
 
     // Centroid data
     int num_centroids = 0;
-    double* h_centroids = nullptr; // on the host (CPU)
-    double* d_centroids = nullptr; // on the device (GPU)
+    float* h_centroids = nullptr; // on the host (CPU)
+    float* d_centroids = nullptr; // on the device (GPU)
 
     // Print a sample of the points
     void print_points() const;

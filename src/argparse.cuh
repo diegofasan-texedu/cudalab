@@ -16,7 +16,7 @@ struct KMeansParams {
     int dims = 0;
     const char* inputfilename = nullptr;
     int max_num_iter = 100;
-    double threshold = 0.001;
+    float threshold = 0.001f;
     bool output_centroids_flag = false;
     int seed = 0;
     bool verbose = false;

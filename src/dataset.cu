@@ -65,7 +65,7 @@ void initialize_centroids(KmeansData& data, int num_centroids, unsigned int seed
 
     // Allocate memory for host-side centroids
     // size_t centroids_size = (size_t)num_centroids * data.dims * sizeof(double);
-    data.h_centroids = new double[num_centroids * data.dims];
+    data.h_centroids = new float[num_centroids * data.dims];
 
     // Seed the random number generator
     kmeans_srand(seed);
@@ -81,13 +81,13 @@ void initialize_centroids(KmeansData& data, int num_centroids, unsigned int seed
     // std::shuffle(indices.begin(), indices.end(), gen);
 
         // Use a pointer to refer to the destination centroid's location
-        double* dest_centroid = &data.h_centroids[i * data.dims];
+        float* dest_centroid = &data.h_centroids[i * data.dims];
 
         // Use a pointer to refer to the source point's location
-        double* src_point = &data.h_points[point_index * data.dims];
+        float* src_point = &data.h_points[point_index * data.dims];
 
         // Copy the point data to the centroid location
-        memcpy(dest_centroid, src_point, data.dims * sizeof(double)); // Requires <string.h>
+        memcpy(dest_centroid, src_point, data.dims * sizeof(float)); // Requires <string.h>
     // Copy the first 'num_centroids' random points to be the initial centroids
     // for (int i = 0; i < num_centroids; ++i) {
     //     int point_idx = indices[i];

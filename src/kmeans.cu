@@ -32,7 +32,7 @@ void sequential_kmeans(int num_cluster, KmeansData& data, int max_num_iter, doub
 //     std::cout << "Thrust implementation is not yet complete." << std::endl;
 // }
 
-void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double threshold, bool output_centroids_flag, bool verbose) {
+void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, float threshold, bool output_centroids_flag, bool verbose) {
     if (verbose) {
         std::cout << "Executing CUDA K-Means..." << std::endl;
     }
@@ -42,23 +42,23 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
     const int dims = data.dims;
 
     // --- 1. Allocate GPU Memory ---
-    size_t points_size = (size_t)num_points * dims * sizeof(double);
-    size_t centroids_size = (size_t)num_cluster * dims * sizeof(double);
+    size_t points_size = (size_t)num_points * dims * sizeof(float);
+    size_t centroids_size = (size_t)num_cluster * dims * sizeof(float);
     size_t assignments_size = (size_t)num_points * sizeof(int);
     size_t counts_size = (size_t)num_cluster * sizeof(int);
 
     // Device pointers
-    double* d_centroid_sums;
+    float* d_centroid_sums;
     int* d_cluster_assignments;
     int* d_cluster_counts;
 
     // --- Additional Memory for Two-Pass Reduction (to avoid atomics) ---
     int point_blocks = (num_points + 256 - 1) / 256;
-    double* d_partial_centroid_sums;
+    float* d_partial_centroid_sums;
     int* d_partial_cluster_counts;
 
     // --- Additional Memory for Convergence Check ---
-    double* d_old_centroids;
+    float* d_old_centroids;
     int* d_converged;
     int h_converged = 0;
     const double threshold_sq = threshold * threshold;
@@ -102,7 +102,7 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
 
         // -- Update Step (Two-Pass Reduction) --
         // Pass 1: Each block computes partial sums into its own output slot.
-        size_t shared_mem_size = (num_cluster * dims * sizeof(double)) + (num_cluster * sizeof(int));
+        size_t shared_mem_size = (num_cluster * dims * sizeof(float)) + (num_cluster * sizeof(int));
         sum_points_for_clusters_kernel<<<point_blocks, threads_per_block, shared_mem_size>>>(
             data.d_points, d_cluster_assignments, d_partial_centroid_sums, d_partial_cluster_counts, num_points, num_cluster, dims);
         HANDLE_CUDA_ERROR(cudaGetLastError());
@@ -155,7 +155,7 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
     data.d_centroids = nullptr;
 }
 
-void kmeans(int num_cluster, KmeansData& data, int max_num_iter, double threshold, bool output_centroids_flag, int seed, bool verbose, ExecutionMethod method) {
+void kmeans(int num_cluster, KmeansData& data, int max_num_iter, float threshold, bool output_centroids_flag, int seed, bool verbose, ExecutionMethod method) {
     // Use a switch to dispatch to the correct k-means implementation
     // based on the selected method.
     switch (method) {
