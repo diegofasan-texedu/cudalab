@@ -60,9 +60,9 @@ def run_executable():
         "-i", "inputs/random-n2048-d16-c16.txt.txt", # Input file
         "-k", "16",                       # Number of clusters
         "-d", "16",                       # Dimensions of data
-        "-m", "cuda",                    # Execution method: cuda, seq, or thrust
+        "-e", "cuda",                    # Execution method: cuda, seq, or thrust
         "-t", "0.000001",                  # Convergence threshold
-        "-n", "500",                     # Max iterations
+        "-m", "500",                     # Max iterations
         "-s", "1",                            # Output final centroids
         "-v"                             # Verbose mode
         
