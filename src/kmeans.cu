@@ -45,43 +45,45 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
     size_t points_size = (size_t)num_points * dims * sizeof(double);
     size_t centroids_size = (size_t)num_cluster * dims * sizeof(double);
     size_t assignments_size = (size_t)num_points * sizeof(int);
+    size_t counts_size = (size_t)num_cluster * sizeof(int);
 
     // Device pointers
+    double* d_centroid_sums;
     int* d_cluster_assignments;
+    int* d_cluster_counts;
 
     // Allocate memory
     HANDLE_CUDA_ERROR(cudaMalloc(&data.d_points, points_size));
     HANDLE_CUDA_ERROR(cudaMalloc(&data.d_centroids, centroids_size));
     HANDLE_CUDA_ERROR(cudaMalloc(&d_cluster_assignments, assignments_size));
+    HANDLE_CUDA_ERROR(cudaMalloc(&d_centroid_sums, centroids_size));
+    HANDLE_CUDA_ERROR(cudaMalloc(&d_cluster_counts, counts_size));
 
     // --- 2. Copy Initial Data from Host to Device ---
     HANDLE_CUDA_ERROR(cudaMemcpy(data.d_points, data.h_points, points_size, cudaMemcpyHostToDevice));
     HANDLE_CUDA_ERROR(cudaMemcpy(data.d_centroids, data.h_centroids, centroids_size, cudaMemcpyHostToDevice));
 
     // --- 3. K-Means Iteration Loop ---
-    const int threads_per_block = 256;
+    int threads_per_block = 256;
+    int point_blocks = (num_points + threads_per_block - 1) / threads_per_block;
+    int cluster_blocks = (num_cluster + threads_per_block - 1) / threads_per_block;
 
     for (int iter = 0; iter < max_num_iter; ++iter) {
         // -- Assignment Step --
-        // Launch one thread per point.
-        const int point_blocks = (num_points + threads_per_block - 1) / threads_per_block;
         assign_clusters_kernel<<<point_blocks, threads_per_block>>>(data.d_points, data.d_centroids, d_cluster_assignments, num_points, num_cluster, dims);
         HANDLE_CUDA_ERROR(cudaGetLastError());
 
         // -- Update Step --
-        // Launch one block per cluster. Each block calculates its new centroid.
-        const int cluster_blocks = num_cluster;
-        // Calculate dynamic shared memory size for the reduction kernel.
-        // It needs space for partial sums and counts for each thread in the block.
-        const size_t shared_mem_size = (threads_per_block * dims * sizeof(double)) + (threads_per_block * sizeof(int));
-        update_centroids_kernel<<<cluster_blocks, threads_per_block, shared_mem_size>>>(
-            data.d_points, d_cluster_assignments, data.d_centroids, num_points, num_cluster, dims
-        );
+        HANDLE_CUDA_ERROR(cudaMemset(d_centroid_sums, 0, centroids_size));
+        HANDLE_CUDA_ERROR(cudaMemset(d_cluster_counts, 0, counts_size));
+
+        sum_points_for_clusters_kernel<<<point_blocks, threads_per_block>>>(data.d_points, d_cluster_assignments, d_centroid_sums, d_cluster_counts, num_points, dims);
+        HANDLE_CUDA_ERROR(cudaGetLastError());
+
+        average_clusters_kernel<<<cluster_blocks, threads_per_block>>>(data.d_centroids, d_centroid_sums, d_cluster_counts, num_cluster, dims);
         HANDLE_CUDA_ERROR(cudaGetLastError());
 
         // For simplicity, convergence check is omitted. Loop runs for max_num_iter.
-        // A sync is good practice here to ensure kernel completion before the next iteration,
-        // especially if timing or more complex logic were added.
         HANDLE_CUDA_ERROR(cudaDeviceSynchronize());
     }
 
@@ -92,6 +94,8 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
     HANDLE_CUDA_ERROR(cudaFree(data.d_points));
     HANDLE_CUDA_ERROR(cudaFree(data.d_centroids));
     HANDLE_CUDA_ERROR(cudaFree(d_cluster_assignments));
+    HANDLE_CUDA_ERROR(cudaFree(d_centroid_sums));
+    HANDLE_CUDA_ERROR(cudaFree(d_cluster_counts));
 
     // Set device pointers to null to avoid double free issues
     data.d_points = nullptr;
