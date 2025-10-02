@@ -83,20 +83,18 @@ __global__ void reduce_partial_sums_kernel(const float* partial_centroid_sums,
                                            int num_clusters, int dims, int grid_size) {
     // Each thread is responsible for one element of the final sums/counts array.
     int global_idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-    // This thread handles one dimension of one cluster's sum
-    if (global_idx < num_clusters * dims) {
+    
+    // The first (num_clusters * dims) threads handle the sums.
+    if (global_idx < (num_clusters * dims)) {
         float total_sum = 0.0f;
         for (int block_id = 0; block_id < grid_size; ++block_id) {
             total_sum += partial_centroid_sums[block_id * num_clusters * dims + global_idx];
         }
         final_centroid_sums[global_idx] = total_sum;
-    }
-
-    // This thread handles one cluster's count.
-    // We use a separate index `cluster_idx` to avoid mixing with the sums logic.
-    int cluster_idx = global_idx;
-    if (cluster_idx < num_clusters) {
+    } 
+    // The next (num_clusters) threads handle the counts.
+    else if (global_idx < (num_clusters * dims + num_clusters)) {
+        int cluster_idx = global_idx - (num_clusters * dims);
         int total_count = 0;
         for (int block_id = 0; block_id < grid_size; ++block_id) {
             total_count += partial_cluster_counts[block_id * num_clusters + cluster_idx];
