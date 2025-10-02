@@ -22,15 +22,15 @@ void sequential_kmeans(int num_cluster, KmeansData& data, int max_num_iter, doub
     std::cout << "Sequential implementation is not yet complete." << std::endl;
 }
 
-void thrust_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double threshold, bool output_centroids_flag, int seed, bool verbose) {
-    if (verbose) {
-        std::cout << "Executing Thrust K-Means..." << std::endl;
-    }
+// void thrust_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double threshold, bool output_centroids_flag, int seed, bool verbose) {
+//     if (verbose) {
+//         std::cout << "Executing Thrust K-Means..." << std::endl;
+//     }
 
-    // The implementation for the Thrust k-means algorithm will go here.
-    // For now, it's a placeholder.
-    std::cout << "Thrust implementation is not yet complete." << std::endl;
-}
+//     // The implementation for the Thrust k-means algorithm will go here.
+//     // For now, it's a placeholder.
+//     std::cout << "Thrust implementation is not yet complete." << std::endl;
+// }
 
 void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double threshold, bool output_centroids_flag, bool verbose) {
     if (verbose) {
