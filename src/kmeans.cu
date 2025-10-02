@@ -111,6 +111,7 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
         int reduce_blocks = (num_cluster * dims + threads_per_block - 1) / threads_per_block;
         reduce_partial_sums_kernel<<<reduce_blocks, threads_per_block>>>(
             d_partial_centroid_sums, d_partial_cluster_counts, d_centroid_sums, d_cluster_counts, num_cluster, dims, point_blocks);
+        HANDLE_CUDA_ERROR(cudaGetLastError());
 
         average_clusters_kernel<<<cluster_blocks, threads_per_block>>>(data.d_centroids, d_centroid_sums, d_cluster_counts, num_cluster, dims);
         HANDLE_CUDA_ERROR(cudaGetLastError());
