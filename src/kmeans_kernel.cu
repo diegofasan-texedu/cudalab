@@ -1,27 +1,6 @@
 #include "kmeans_kernel.cuh"
 #include <float.h> // For DBL_MAX
 
-/**
- * @brief Provides an atomicAdd implementation for double-precision floating-point numbers.
- *
- * This is required for devices with a compute capability less than 6.0, which do not
- * have a native hardware instruction for this operation. It uses a compare-and-swap (CAS)
- * loop to ensure atomicity.
- *
- * @param address The memory address of the double to be updated.
- * @param val The double value to add to the value at `address`.
- * @return The old value that was stored at `address` before the addition.
- */
-__device__ double atomicAdd(double* address, double val) {
-    unsigned long long int* address_as_ull = (unsigned long long int*)address;
-    unsigned long long int old = *address_as_ull, assumed;
-    do {
-        assumed = old;
-        old = atomicCAS(address_as_ull, assumed, __double_as_longlong(val + __longlong_as_double(assumed)));
-    } while (assumed != old);
-    return __longlong_as_double(old);
-}
-
 __global__ void assign_clusters_kernel(const double* points,
                                        const double* centroids,
                                        int* cluster_assignments,
