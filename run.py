@@ -82,7 +82,9 @@ def compare_centroids(calculated, answers, tolerance=1e-4):
     # Create a cost matrix where cost[i, j] is the distance between
     # calculated[i] and answers[j].
     calculated_np = np.array(calculated)
+    print(calculated_np)
     answers_np = np.array(answers)
+    print(answers_np)
     cost_matrix = np.linalg.norm(calculated_np[:, np.newaxis, :] - answers_np[np.newaxis, :, :], axis=2)
 
     # Use the Hungarian algorithm to find the optimal assignment (best pairing).
