@@ -67,7 +67,7 @@ def read_answer_file(filepath):
                 print(f"Warning: Could not parse numbers in answer line: {line}")
     return points
 
-def compare_centroids(calculated, answers, tolerance=1e-3):
+def compare_centroids(calculated, answers, tolerance=1e-6):
     """
     Compares two sets of centroids for similarity.
 
@@ -114,14 +114,14 @@ def run_executable():
     # --- CONFIGURE YOUR K-MEANS ARGUMENTS HERE ---
     # This example assumes an input file at 'data/points_2d_1000.txt'
     # with 2 dimensions. Adjust these values for your dataset.
-    input_file = "inputs/random-n16384-d24-c16.txt"
+    input_file = "inputs/random-n65536-d32-c16.txt"
     args = [
         "-i", input_file,                # Input file
         "-k", "16",                       # Number of clusters
-        "-d", "24",                       # Dimensions of data
+        "-d", "32",                       # Dimensions of data
         "-e", "cuda",                    # Execution method: cuda, seq, or thrust
         "-t", "0.0000001",                  # Convergence threshold
-        "-m", "150",                     # Max iterations
+        "-m", "500",                     # Max iterations
         "-s", "20",                            # Output final centroids
         # "-n", "500",                     # Max iterations
         # "-o",                            # Output final centroids
