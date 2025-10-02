@@ -52,7 +52,7 @@ __global__ void reduce_partial_sums_kernel(const float* partial_centroid_sums, c
  * by the number of points in it to get the new centroid. If a cluster is empty,
  * its centroid is not updated.
  */
-__global__ void average_clusters_kernel(double* centroids, const double* centroid_sums, const int* cluster_counts, int num_clusters, int dims);
+__global__ void average_clusters_kernel(float* centroids, const float* centroid_sums, const int* cluster_counts, int num_clusters, int dims);
 
 /**
  * @brief Checks if the centroids have moved less than a given threshold.
