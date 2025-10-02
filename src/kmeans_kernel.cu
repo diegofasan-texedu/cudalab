@@ -42,27 +42,48 @@ __global__ void sum_points_for_clusters_kernel(const double* points,
     // This assumes `num_clusters * dims` is small enough for shared memory.
     // For larger `k` or `dims`, this would need a different strategy.
     extern __shared__ double s_sums[];
-    int* s_counts = (int*)&s_sums[num_clusters * dims];
+    int* s_counts = (int*)(&s_sums[num_clusters * dims]);
 
-    // Each thread initializes a portion of the shared memory.
-    for (int i = threadIdx.x; i < num_clusters * dims; i += blockDim.x) {
-        s_sums[i] = 0.0;
-    }
-    for (int i = threadIdx.x; i < num_clusters; i += blockDim.x) {
-        s_counts[i] = 0;
-    }
-    __syncthreads();
+    // --- Stage 1: Each thread accumulates sums into private memory (registers) ---
+    // This requires enough registers to hold sums for all clusters.
+    // This is only feasible for a small number of clusters.
+    double p_sums[128]; // Max K=128, D=1 for this to work. A more robust solution would use local memory.
+    int p_counts[128];  // Assuming max K=128
 
-    // Each thread processes a subset of points and accumulates in shared memory.
+    for (int i = 0; i < num_clusters; ++i) {
+        for (int d = 0; d < dims; ++d) p_sums[i * dims + d] = 0.0;
+        p_counts[i] = 0;
+    }
+
+    // Each thread processes a subset of points using a grid-stride loop.
     int point_idx_start = blockIdx.x * blockDim.x + threadIdx.x;
     int stride = gridDim.x * blockDim.x;
 
     for (int point_idx = point_idx_start; point_idx < num_points; point_idx += stride) {
         int assigned_cluster = cluster_assignments[point_idx];
         if (assigned_cluster != -1) {
-            atomicAdd(&s_counts[assigned_cluster], 1);
+            p_counts[assigned_cluster]++;
             for (int dim_idx = 0; dim_idx < dims; ++dim_idx) {
-                atomicAdd(&s_sums[assigned_cluster * dims + dim_idx], points[point_idx * dims + dim_idx]);
+                p_sums[assigned_cluster * dims + dim_idx] += points[point_idx * dims + dim_idx];
+            }
+        }
+    }
+
+    // --- Stage 2: Parallel reduction of private sums into shared memory ---
+    // Each thread in the block will write its private sums for each cluster
+    // to shared memory, then we perform a reduction.
+    for (int i = threadIdx.x; i < num_clusters; i += blockDim.x) {
+        // Initialize shared memory for reduction
+        s_counts[i] = 0;
+        for (int d = 0; d < dims; d++) s_sums[i * dims + d] = 0.0;
+    }
+    __syncthreads();
+
+    for (int i = 0; i < num_clusters; ++i) {
+        atomicAdd(&s_counts[i], p_counts[i]); // Using atomics here is efficient for the final reduction
+        for (int d = 0; d < dims; d++) {
+            if (p_sums[i*dims+d] != 0.0) { // Avoid unnecessary atomic operations
+                atomicAdd(&s_sums[i * dims + d], p_sums[i * dims + d]);
             }
         }
     }
