@@ -52,6 +52,11 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
     int* d_cluster_assignments;
     int* d_cluster_counts;
 
+    // --- Additional Memory for Two-Pass Reduction (to avoid atomics) ---
+    int point_blocks = (num_points + 256 - 1) / 256;
+    double* d_partial_centroid_sums;
+    int* d_partial_cluster_counts;
+
     // Allocate memory
     HANDLE_CUDA_ERROR(cudaMalloc(&data.d_points, points_size));
     HANDLE_CUDA_ERROR(cudaMalloc(&data.d_centroids, centroids_size));
@@ -59,13 +64,15 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
     HANDLE_CUDA_ERROR(cudaMalloc(&d_centroid_sums, centroids_size));
     HANDLE_CUDA_ERROR(cudaMalloc(&d_cluster_counts, counts_size));
 
+    HANDLE_CUDA_ERROR(cudaMalloc(&d_partial_centroid_sums, centroids_size * point_blocks));
+    HANDLE_CUDA_ERROR(cudaMalloc(&d_partial_cluster_counts, counts_size * point_blocks));
+
     // --- 2. Copy Initial Data from Host to Device ---
     HANDLE_CUDA_ERROR(cudaMemcpy(data.d_points, data.h_points, points_size, cudaMemcpyHostToDevice));
     HANDLE_CUDA_ERROR(cudaMemcpy(data.d_centroids, data.h_centroids, centroids_size, cudaMemcpyHostToDevice));
 
     // --- 3. K-Means Iteration Loop ---
     int threads_per_block = 256;
-    int point_blocks = (num_points + threads_per_block - 1) / threads_per_block;
     int cluster_blocks = (num_cluster + threads_per_block - 1) / threads_per_block;
 
     for (int iter = 0; iter < max_num_iter; ++iter) {
@@ -77,8 +84,17 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
         HANDLE_CUDA_ERROR(cudaMemset(d_centroid_sums, 0, centroids_size));
         HANDLE_CUDA_ERROR(cudaMemset(d_cluster_counts, 0, counts_size));
 
-        sum_points_for_clusters_kernel<<<point_blocks, threads_per_block>>>(data.d_points, d_cluster_assignments, d_centroid_sums, d_cluster_counts, num_points, dims);
+        // -- Update Step (Two-Pass Reduction) --
+        // Pass 1: Each block computes partial sums into its own output slot.
+        size_t shared_mem_size = (num_cluster * dims * sizeof(double)) + (num_cluster * sizeof(int));
+        sum_points_for_clusters_kernel<<<point_blocks, threads_per_block, shared_mem_size>>>(
+            data.d_points, d_cluster_assignments, d_partial_centroid_sums, d_partial_cluster_counts, num_points, num_cluster, dims);
         HANDLE_CUDA_ERROR(cudaGetLastError());
+
+        // Pass 2: Reduce all partial sums into the final sum arrays.
+        int reduce_blocks = (num_cluster * dims + threads_per_block - 1) / threads_per_block;
+        reduce_partial_sums_kernel<<<reduce_blocks, threads_per_block>>>(
+            d_partial_centroid_sums, d_partial_cluster_counts, d_centroid_sums, d_cluster_counts, num_cluster, dims, point_blocks);
 
         average_clusters_kernel<<<cluster_blocks, threads_per_block>>>(data.d_centroids, d_centroid_sums, d_cluster_counts, num_cluster, dims);
         HANDLE_CUDA_ERROR(cudaGetLastError());
@@ -96,6 +112,8 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
     HANDLE_CUDA_ERROR(cudaFree(d_cluster_assignments));
     HANDLE_CUDA_ERROR(cudaFree(d_centroid_sums));
     HANDLE_CUDA_ERROR(cudaFree(d_cluster_counts));
+    HANDLE_CUDA_ERROR(cudaFree(d_partial_centroid_sums));
+    HANDLE_CUDA_ERROR(cudaFree(d_partial_cluster_counts));
 
     // Set device pointers to null to avoid double free issues
     data.d_points = nullptr;

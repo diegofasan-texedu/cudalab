@@ -21,18 +21,29 @@ __global__ void assign_clusters_kernel(const double* points, const double* centr
 /**
  * @brief Sums the coordinates of all points belonging to each cluster.
  *
- * Each thread processes one point. It reads the point's assigned cluster and
- * atomically adds its coordinates to the corresponding sum in `centroid_sums`.
- * It also atomically increments the count for that cluster.
+ * This is the first stage of a two-pass reduction. Each thread block calculates
+ * its own partial sum and count for each cluster, writing the result to a
+ * block-specific location in global memory. This avoids using global atomics.
  *
  * @param points Device pointer to the input data points.
  * @param cluster_assignments Device pointer to the assigned cluster for each point.
- * @param centroid_sums Device pointer to store the sum of points for each cluster.
- * @param cluster_counts Device pointer to store the number of points in each cluster.
+ * @param partial_centroid_sums Device pointer to store the partial sum of points for each cluster from each block.
+ * @param partial_cluster_counts Device pointer to store the partial count of points in each cluster from each block.
  * @param num_points Total number of points.
+ * @param num_clusters Total number of clusters.
  * @param dims The dimensionality of each point.
  */
-__global__ void sum_points_for_clusters_kernel(const double* points, const int* cluster_assignments, double* centroid_sums, int* cluster_counts, int num_points, int dims);
+__global__ void sum_points_for_clusters_kernel(const double* points, const int* cluster_assignments, double* partial_centroid_sums, int* partial_cluster_counts, int num_points, int num_clusters, int dims);
+
+/**
+ * @brief Reduces the partial sums from all blocks into a final sum.
+ *
+ * This is the second stage of the reduction. Each thread is responsible for
+ * reducing the partial sums for one dimension of one cluster.
+ *
+ * @param grid_size The number of blocks used in the first kernel (sum_points_for_clusters_kernel).
+ */
+__global__ void reduce_partial_sums_kernel(const double* partial_centroid_sums, const int* partial_cluster_counts, double* final_centroid_sums, int* final_cluster_counts, int num_clusters, int dims, int grid_size);
 
 /**
  * @brief Calculates the new centroids by averaging the sums.
