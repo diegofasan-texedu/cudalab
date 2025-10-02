@@ -149,3 +149,27 @@ __global__ void average_clusters_kernel(double* centroids,
         }
     }
 }
+
+__global__ void check_convergence_kernel(const double* old_centroids,
+                                         const double* new_centroids,
+                                         int* converged_flag,
+                                         int num_clusters,
+                                         int dims,
+                                         double threshold_sq) {
+    int cluster_idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (cluster_idx < num_clusters) {
+        double dist_sq = 0.0;
+        // Calculate the squared Euclidean distance between the old and new centroid
+        for (int d = 0; d < dims; ++d) {
+            double diff = old_centroids[cluster_idx * dims + d] - new_centroids[cluster_idx * dims + d];
+            dist_sq += diff * diff;
+        }
+
+        // If any centroid moved more than the threshold, set the flag to 0 (not converged)
+        if (dist_sq > threshold_sq) {
+            // Use an atomic operation to ensure only one thread writes at a time, preventing race conditions.
+            atomicMin(converged_flag, 0);
+        }
+    }
+}

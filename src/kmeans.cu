@@ -57,6 +57,12 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
     double* d_partial_centroid_sums;
     int* d_partial_cluster_counts;
 
+    // --- Additional Memory for Convergence Check ---
+    double* d_old_centroids;
+    int* d_converged;
+    int h_converged = 0;
+    const double threshold_sq = threshold * threshold;
+
     // Allocate memory
     HANDLE_CUDA_ERROR(cudaMalloc(&data.d_points, points_size));
     HANDLE_CUDA_ERROR(cudaMalloc(&data.d_centroids, centroids_size));
@@ -67,6 +73,9 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
     HANDLE_CUDA_ERROR(cudaMalloc(&d_partial_centroid_sums, centroids_size * point_blocks));
     HANDLE_CUDA_ERROR(cudaMalloc(&d_partial_cluster_counts, counts_size * point_blocks));
 
+    HANDLE_CUDA_ERROR(cudaMalloc(&d_old_centroids, centroids_size));
+    HANDLE_CUDA_ERROR(cudaMalloc(&d_converged, sizeof(int)));
+
     // --- 2. Copy Initial Data from Host to Device ---
     HANDLE_CUDA_ERROR(cudaMemcpy(data.d_points, data.h_points, points_size, cudaMemcpyHostToDevice));
     HANDLE_CUDA_ERROR(cudaMemcpy(data.d_centroids, data.h_centroids, centroids_size, cudaMemcpyHostToDevice));
@@ -74,8 +83,15 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
     // --- 3. K-Means Iteration Loop ---
     int threads_per_block = 256;
     int cluster_blocks = (num_cluster + threads_per_block - 1) / threads_per_block;
+    int last_iter = 0;
 
     for (int iter = 0; iter < max_num_iter; ++iter) {
+        last_iter = iter;
+        h_converged = 1; // Assume convergence until proven otherwise
+
+        // Store current centroids to check for convergence later
+        HANDLE_CUDA_ERROR(cudaMemcpy(d_old_centroids, data.d_centroids, centroids_size, cudaMemcpyDeviceToDevice));
+
         // -- Assignment Step --
         assign_clusters_kernel<<<point_blocks, threads_per_block>>>(data.d_points, data.d_centroids, d_cluster_assignments, num_points, num_cluster, dims);
         HANDLE_CUDA_ERROR(cudaGetLastError());
@@ -99,9 +115,25 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
         average_clusters_kernel<<<cluster_blocks, threads_per_block>>>(data.d_centroids, d_centroid_sums, d_cluster_counts, num_cluster, dims);
         HANDLE_CUDA_ERROR(cudaGetLastError());
 
-        // For simplicity, convergence check is omitted. Loop runs for max_num_iter.
+        // -- Convergence Check --
+        // Initialize convergence flag on device to 1 (true)
+        HANDLE_CUDA_ERROR(cudaMemcpy(d_converged, &h_converged, sizeof(int), cudaMemcpyHostToDevice));
+
+        // Launch kernel to check if any centroid moved more than the threshold
+        check_convergence_kernel<<<cluster_blocks, threads_per_block>>>(
+            d_old_centroids, data.d_centroids, d_converged, num_cluster, dims, threshold_sq);
+        HANDLE_CUDA_ERROR(cudaGetLastError());
+
+        // Copy the convergence flag back to the host
+        HANDLE_CUDA_ERROR(cudaMemcpy(&h_converged, d_converged, sizeof(int), cudaMemcpyDeviceToHost));
         HANDLE_CUDA_ERROR(cudaDeviceSynchronize());
+
+        if (h_converged) {
+            if (verbose) std::cout << "Converged after " << iter + 1 << " iterations." << std::endl;
+            break;
+        }
     }
+    if (!h_converged && verbose) std::cout << "Reached max iterations (" << max_num_iter << ") without converging." << std::endl;
 
     // --- 4. Copy Final Centroids from Device to Host ---
     HANDLE_CUDA_ERROR(cudaMemcpy(data.h_centroids, data.d_centroids, centroids_size, cudaMemcpyDeviceToHost));
@@ -114,6 +146,8 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
     HANDLE_CUDA_ERROR(cudaFree(d_cluster_counts));
     HANDLE_CUDA_ERROR(cudaFree(d_partial_centroid_sums));
     HANDLE_CUDA_ERROR(cudaFree(d_partial_cluster_counts));
+    HANDLE_CUDA_ERROR(cudaFree(d_old_centroids));
+    HANDLE_CUDA_ERROR(cudaFree(d_converged));
 
     // Set device pointers to null to avoid double free issues
     data.d_points = nullptr;
