@@ -53,16 +53,14 @@ __global__ void sum_points_for_clusters_kernel(const float* points,
     }
     __syncthreads();
     
-    // Each thread is responsible for one point.
-    int point_idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (point_idx < num_points) {
+    // Each thread processes a subset of points using a grid-stride loop.
+    for (int point_idx = blockIdx.x * blockDim.x + threadIdx.x; point_idx < num_points; point_idx += gridDim.x * blockDim.x) {
         int assigned_cluster = cluster_assignments[point_idx];
         if (assigned_cluster != -1) {
             // Atomically update the counts and sums in shared memory for this block
             atomicAdd(&s_counts[assigned_cluster], 1);
             for (int dim_idx = 0; dim_idx < dims; ++dim_idx) {
-                atomicAdd(&s_sums[assigned_cluster * dims + dim_idx], points[point_idx * dims + dim_idx]);
+                atomicAdd((float*)&s_sums[assigned_cluster * dims + dim_idx], points[point_idx * dims + dim_idx]);
             }
         }
     }
