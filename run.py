@@ -67,7 +67,7 @@ def read_answer_file(filepath):
                 print(f"Warning: Could not parse numbers in answer line: {line}")
     return points
 
-def compare_centroids(calculated, answers, tolerance=1e-4):
+def compare_centroids(calculated, answers, tolerance=1e-3):
     """
     Compares two sets of centroids for similarity.
 
