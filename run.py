@@ -54,17 +54,23 @@ def read_answer_file(filepath):
     
     points = []
     with open(filepath, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                # The answer file might have a leading index like the input file.
-                # We split the line and take all but the first element.
-                point = [float(n) for n in line.split()[1:]]
-                points.append(point)
-            except ValueError:
-                print(f"Warning: Could not parse numbers in answer line: {line}")
+        # The first line of the input file is the number of points.
+        # The C++ code reads this, so the Python reader should skip it to match.
+        try:
+            num_points = int(f.readline().strip())
+            for i, line in enumerate(f):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    # The data file has a leading index for each point.
+                    # We split the line and take all but the first element.
+                    point = [float(n) for n in line.split()[1:]]
+                    points.append(point)
+                except (ValueError, IndexError):
+                    print(f"Warning: Could not parse numbers in data file line {i+2}: {line}")
+        except (IOError, ValueError) as e:
+            print(f"Error reading point file '{filepath}': {e}")
     return points
 
 def compare_centroids(calculated, answers, tolerance=1e-6):
