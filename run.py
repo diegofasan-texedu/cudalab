@@ -59,7 +59,9 @@ def read_answer_file(filepath):
             if not line:
                 continue
             try:
-                point = [float(n) for n in line.split()]
+                # The answer file might have a leading index like the input file.
+                # We split the line and take all but the first element.
+                point = [float(n) for n in line.split()[1:]]
                 points.append(point)
             except ValueError:
                 print(f"Warning: Could not parse numbers in answer line: {line}")
@@ -116,9 +118,12 @@ def run_executable():
         "-k", "16",                       # Number of clusters
         "-d", "16",                       # Dimensions of data
         "-e", "cuda",                    # Execution method: cuda, seq, or thrust
+        "-m", "cuda",                    # Execution method: cuda, seq, or thrust
         "-t", "0.000001",                  # Convergence threshold
         "-m", "500",                     # Max iterations
         "-s", "1",                            # Output final centroids
+        "-n", "500",                     # Max iterations
+        "-o",                            # Output final centroids
         "-v"                             # Verbose mode
     ]
 
@@ -144,6 +149,7 @@ def run_executable():
 
             # --- Compare with Answer File ---
             answer_file = input_file.replace(".txt", "-answer.txt").replace("inputs","answers")
+            answer_file = input_file.replace(".txt", "-answer.txt").replace("inputs/", "answers/")
             print(f"\n--- Validating against {answer_file} ---")
             answer_centroids = read_answer_file(answer_file)
             if answer_centroids:
