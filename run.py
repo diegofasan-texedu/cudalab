@@ -150,7 +150,7 @@ def validate_point_assignments(points, final_centroids, threshold=1e-5):
     else:
         print(f"Assignment Validation Failed: Found {num_wrong} non-optimally placed points.")
         # Print details for at least 10 wrong points, as requested previously.
-        for i, point_idx in enumerate(wrong_points_indices[:10]):
+        for i, point_idx in enumerate(wrong_points_indices[:40]):
             print(f"  - Point {point_idx}: dis0={dis0[point_idx]:.6f}, dis1={dis1[point_idx]:.6f}, diff={diff[point_idx]:.6f}")
         if num_wrong > 10:
             print("  ...")
