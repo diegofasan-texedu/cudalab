@@ -148,17 +148,17 @@ def validate_point_assignments(points, final_centroids, threshold=1e-5):
 
     # 1. For each point, find its closest centroid from the final set.
     # This gives us the 'optimal' assignment for each point.
-    dist_sq = np.sum((points_np[:, np.newaxis, :] - centroids_np[np.newaxis, :, :])**2, axis=2)
-    optimal_assignments = np.argmin(dist_sq, axis=1)
+    dist = np.linalg.norm(points_np[:, np.newaxis, :] - centroids_np[np.newaxis, :, :], axis=2)
+    optimal_assignments = np.argmin(dist, axis=1)
 
     # 2. Compute `dis0`: the distance from each point to its closest centroid.
-    dis0 = np.min(dist_sq, axis=1)
+    dis0 = np.min(dist, axis=1)
 
     # 3. Re-calculate centroids based on these optimal assignments.
     recalculated_centroids = np.array([points_np[optimal_assignments == k].mean(axis=0) for k in range(num_clusters)])
 
     # 4. Compute `dis1`: the distance from each point to its re-calculated centroid.
-    dis1 = np.array([np.sum((points_np[i] - recalculated_centroids[optimal_assignments[i]])**2) for i in range(num_points)])
+    dis1 = np.array([np.linalg.norm(points_np[i] - recalculated_centroids[optimal_assignments[i]]) for i in range(num_points)])
 
     # 5. Find wrong points where the difference between dis0 and dis1 is too large.
     diff = np.abs(dis0 - dis1)
@@ -171,7 +171,7 @@ def validate_point_assignments(points, final_centroids, threshold=1e-5):
         print(f"Assignment Validation Failed: Found {num_wrong} non-optimally placed points.")
         # Print details for at least 10 wrong points, as requested previously.
         for i, point_idx in enumerate(wrong_points_indices[:10]):
-            print(f"  - Point {point_idx}: dis0_sq={dis0[point_idx]:.6f}, dis1_sq={dis1[point_idx]:.6f}, diff={diff[point_idx]:.6f}")
+            print(f"  - Point {point_idx}: dis0={dis0[point_idx]:.6f}, dis1={dis1[point_idx]:.6f}, diff={diff[point_idx]:.6f}")
         if num_wrong > 10:
             print("  ...")
     
