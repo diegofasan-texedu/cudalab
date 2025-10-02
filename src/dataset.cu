@@ -69,17 +69,16 @@ void initialize_centroids(KmeansData& data, int num_centroids, unsigned int seed
 
     // Seed the random number generator
     kmeans_srand(seed);
-    std::vector<int> indices(data.num_points);
-    // std::iota(indices.begin(), indices.end(), 0); // Fill with 0, 1, 2, ...
+    std::vector<int> indices(data.num_points); // Create a vector of indices
+    std::iota(indices.begin(), indices.end(), 0); // Fill with 0, 1, 2, ...
 
-    // Randomly select k points from the dataset to be the initial centroids
-    for (int i = 0; i < num_centroids; i++) {
-        // Generate a random index in the range [0, num_points-1]
-        int point_index = kmeans_rand() % data.num_points;
     // Shuffle indices to select unique random points
-    // std::mt19937 gen(seed);
-    // std::shuffle(indices.begin(), indices.end(), gen);
+    std::mt19937 gen(seed);
+    std::shuffle(indices.begin(), indices.end(), gen);
 
+    // Copy the first 'num_centroids' random points to be the initial centroids
+    for (int i = 0; i < num_centroids; i++) {
+        int point_index = indices[i];
         // Use a pointer to refer to the destination centroid's location
         float* dest_centroid = &data.h_centroids[i * data.dims];
 
@@ -88,12 +87,5 @@ void initialize_centroids(KmeansData& data, int num_centroids, unsigned int seed
 
         // Copy the point data to the centroid location
         memcpy(dest_centroid, src_point, data.dims * sizeof(float)); // Requires <string.h>
-    // Copy the first 'num_centroids' random points to be the initial centroids
-    // for (int i = 0; i < num_centroids; ++i) {
-    //     int point_idx = indices[i];
-    //     for (int d = 0; d < data.dims; ++d) {
-    //         data.h_centroids[i * data.dims + d] = data.h_points[point_idx * data.dims + d];
-    //     }
-    // }
     }
 }
