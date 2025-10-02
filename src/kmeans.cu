@@ -61,7 +61,7 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, float thre
     float* d_old_centroids;
     int* d_converged;
     int h_converged = 0;
-    const double threshold_sq = threshold * threshold;
+    const double threshold_sq = threshold;
 
     // Allocate memory
     HANDLE_CUDA_ERROR(cudaMalloc(&data.d_points, points_size));
