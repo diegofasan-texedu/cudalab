@@ -60,7 +60,7 @@ __global__ void sum_points_for_clusters_kernel(const float* points,
             // Atomically update the counts and sums in shared memory for this block
             atomicAdd(&s_counts[assigned_cluster], 1);
             for (int dim_idx = 0; dim_idx < dims; ++dim_idx) {
-                atomicAdd((float*)&s_sums[assigned_cluster * dims + dim_idx], points[point_idx * dims + dim_idx]);
+                atomicAdd(&s_sums[assigned_cluster * dims + dim_idx], points[point_idx * dims + dim_idx]);
             }
         }
     }

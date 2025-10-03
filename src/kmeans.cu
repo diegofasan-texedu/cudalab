@@ -22,16 +22,6 @@ void sequential_kmeans(int num_cluster, KmeansData& data, int max_num_iter, doub
     std::cout << "Sequential implementation is not yet complete." << std::endl;
 }
 
-// void thrust_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double threshold, bool output_centroids_flag, int seed, bool verbose) {
-//     if (verbose) {
-//         std::cout << "Executing Thrust K-Means..." << std::endl;
-//     }
-
-//     // The implementation for the Thrust k-means algorithm will go here.
-//     // For now, it's a placeholder.
-//     std::cout << "Thrust implementation is not yet complete." << std::endl;
-// }
-
 void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, float threshold, bool output_centroids_flag, bool verbose) {
     if (verbose) {
         std::cout << "Executing CUDA K-Means..." << std::endl;
@@ -108,8 +98,9 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, float thre
         HANDLE_CUDA_ERROR(cudaGetLastError());
 
         // Pass 2: Reduce all partial sums into the final sum arrays.
-        int total_reduce_elements = (num_cluster * dims) + num_cluster;
-        int reduce_blocks = (total_reduce_elements + threads_per_block - 1) / threads_per_block;
+        // The kernel handles both sums and counts. We launch enough threads for the larger task (sums).
+        int total_sum_elements = num_cluster * dims;
+        int reduce_blocks = (total_sum_elements + threads_per_block - 1) / threads_per_block;
         reduce_partial_sums_kernel<<<reduce_blocks, threads_per_block>>>(
             d_partial_centroid_sums, d_partial_cluster_counts, d_centroid_sums, d_cluster_counts, num_cluster, dims, point_blocks);
         HANDLE_CUDA_ERROR(cudaGetLastError());
