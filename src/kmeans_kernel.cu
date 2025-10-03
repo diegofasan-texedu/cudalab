@@ -57,9 +57,10 @@ __global__ void sum_points_for_clusters_kernel(const float* points,
     for (int point_idx = blockIdx.x * blockDim.x + threadIdx.x; point_idx < num_points; point_idx += gridDim.x * blockDim.x) {
         int assigned_cluster = cluster_assignments[point_idx];
         if (assigned_cluster != -1) {
-            // Atomically update the counts and sums in shared memory for this block
+            // Atomically update the count for this cluster in shared memory.
             atomicAdd(&s_counts[assigned_cluster], 1);
             for (int dim_idx = 0; dim_idx < dims; ++dim_idx) {
+                // Atomically update the sum for each dimension of the cluster.
                 atomicAdd(&s_sums[assigned_cluster * dims + dim_idx], points[point_idx * dims + dim_idx]);
             }
         }

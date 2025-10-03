@@ -92,7 +92,7 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
 
         // -- Update Step (Two-Pass Reduction) --
         // Pass 1: Each block computes partial sums into its own output slot.
-        size_t shared_mem_size = 0; // No shared memory used
+        size_t shared_mem_size = (num_cluster * dims * sizeof(float)) + (num_cluster * sizeof(int));
         sum_points_for_clusters_kernel<<<point_blocks, threads_per_block, shared_mem_size>>>(
             data.d_points, d_cluster_assignments, d_partial_centroid_sums, d_partial_cluster_counts, num_points, num_cluster, dims);
         HANDLE_CUDA_ERROR(cudaGetLastError());
