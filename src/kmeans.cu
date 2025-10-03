@@ -22,7 +22,7 @@ void sequential_kmeans(int num_cluster, KmeansData& data, int max_num_iter, doub
     std::cout << "Sequential implementation is not yet complete." << std::endl;
 }
 
-void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, float threshold, bool output_centroids_flag, bool verbose) {
+void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double threshold, bool output_centroids_flag, bool verbose) {
     if (verbose) {
         std::cout << "Executing CUDA K-Means..." << std::endl;
     }
@@ -43,7 +43,7 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, float thre
     int* d_cluster_counts;
 
     // --- Additional Memory for Two-Pass Reduction (to avoid atomics) ---
-    int point_blocks = (num_points + 256 - 1) / 256;
+    int point_blocks = (num_points + 255) / 256;
     float* d_partial_centroid_sums;
     int* d_partial_cluster_counts;
 
@@ -92,7 +92,7 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, float thre
 
         // -- Update Step (Two-Pass Reduction) --
         // Pass 1: Each block computes partial sums into its own output slot.
-        size_t shared_mem_size = (num_cluster * dims * sizeof(float)) + (num_cluster * sizeof(int));
+        size_t shared_mem_size = 0; // No shared memory used
         sum_points_for_clusters_kernel<<<point_blocks, threads_per_block, shared_mem_size>>>(
             data.d_points, d_cluster_assignments, d_partial_centroid_sums, d_partial_cluster_counts, num_points, num_cluster, dims);
         HANDLE_CUDA_ERROR(cudaGetLastError());
@@ -100,10 +100,10 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, float thre
         // Pass 2: Reduce all partial sums into the final sum arrays.
         // The kernel handles both sums and counts. We launch enough threads for the larger task (sums).
         int total_sum_elements = num_cluster * dims;
-        int reduce_blocks = (total_sum_elements + threads_per_block - 1) / threads_per_block;
+        int reduce_blocks = (total_sum_elements + threads_per_block - 1) / threads_per_block; // Corrected calculation
         reduce_partial_sums_kernel<<<reduce_blocks, threads_per_block>>>(
             d_partial_centroid_sums, d_partial_cluster_counts, d_centroid_sums, d_cluster_counts, num_cluster, dims, point_blocks);
-        HANDLE_CUDA_ERROR(cudaGetLastError());
+       HANDLE_CUDA_ERROR(cudaGetLastError());
 
         average_clusters_kernel<<<cluster_blocks, threads_per_block>>>(data.d_centroids, d_centroid_sums, d_cluster_counts, num_cluster, dims);
         HANDLE_CUDA_ERROR(cudaGetLastError());
@@ -120,7 +120,7 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, float thre
         // Copy the convergence flag back to the host
         HANDLE_CUDA_ERROR(cudaMemcpy(&h_converged, d_converged, sizeof(int), cudaMemcpyDeviceToHost));
         HANDLE_CUDA_ERROR(cudaDeviceSynchronize());
-
+    
         if (h_converged) {
             if (verbose) std::cout << "Converged after " << iter + 1 << " iterations." << std::endl;
             break;
@@ -155,7 +155,7 @@ void kmeans(int num_cluster, KmeansData& data, int max_num_iter, float threshold
             sequential_kmeans(num_cluster, data, max_num_iter, threshold, output_centroids_flag, seed, verbose);
             break;
         case CUDA:
-            cuda_kmeans(num_cluster, data, max_num_iter, threshold, output_centroids_flag, verbose);
+           cuda_kmeans(num_cluster, data, max_num_iter, threshold, output_centroids_flag, verbose);
             break;
         case THRUST:
             thrust_kmeans(num_cluster, data, max_num_iter, threshold, output_centroids_flag, seed, verbose);
