@@ -1,6 +1,5 @@
 #include "kmeans_kernel.cuh"
 #include <float.h> // For DBL_MAX
-#include <stdio.h> // For printf
 
 __global__ void assign_clusters_kernel(const double* points, const double* centroids, int* cluster_assignments, int num_points, int num_clusters, int dims) {
     // Get the unique index for this thread, which corresponds to a data point.
