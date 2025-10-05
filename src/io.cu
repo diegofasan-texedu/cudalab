@@ -19,7 +19,7 @@ bool read_points(const char* filename, KmeansData& data, bool verbose) {
 
     // Allocate memory for the points
     // Data is stored in a 1D array (row-major order)
-    data.h_points = new float[data.num_points * data.dims];
+    data.h_points = new double[data.num_points * data.dims];
 
     int point_id;
     for (int i = 0; i < data.num_points; ++i) {

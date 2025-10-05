@@ -80,78 +80,98 @@ def read_points_file(filepath, has_header=False):
             print(f"Error reading point file '{filepath}': {e}")
     return points
 
-def compare_centroids(calculated, answers, tolerance=1e-6):
+def print_centroid_list(name, centroids):
+    """Helper function to print a list of centroids with formatting."""
+    print(f"\n--- {name} (CSV Format, double precision) ---")
+    for i, centroid in enumerate(centroids):
+        # Create a list of strings for all coordinates, formatted to 12 decimal places for doubles.
+        coords_str_list = [f"{x:.12f}" for x in centroid]
+        # Join the index and all coordinates with a comma to create a CSV line.
+        csv_line = ",".join([str(i)] + coords_str_list)
+        print(csv_line)
+
+def compare_centroids(calculated, answers, tolerance=1e-4):
     """
     Compares two sets of centroids for similarity.
-
+ 
     This function handles the case where the order of centroids is different
     by finding the optimal one-to-one mapping between the two sets that
-    minimizes the sum of Euclidean distances.
+    minimizes the sum of Euclidean distances. Each matched pair must have a
+    distance below the specified tolerance for the validation to pass.
     """
     if len(calculated) != len(answers):
         print(f"Validation Failed: Mismatched number of centroids. Got {len(calculated)}, expected {len(answers)}.")
         return False
-
+ 
     # Create a cost matrix where cost[i, j] is the distance between
     # calculated[i] and answers[j].
     calculated_np = np.array(calculated)
-    print(calculated_np)
     answers_np = np.array(answers)
-    print(answers_np)
     cost_matrix = np.linalg.norm(calculated_np[:, np.newaxis, :] - answers_np[np.newaxis, :, :], axis=2)
 
+    # --- Print the full cost matrix for inspection ---
+    print("\n--- Cost Matrix (Euclidean Distances) ---")
+    print("Each row is a calculated centroid, each column is an answer centroid.")
+    print(np.array2string(cost_matrix, formatter={'float_kind':lambda x: "%.6f" % x}))
+    
+ 
     # Use the Hungarian algorithm to find the optimal assignment (best pairing).
     row_ind, col_ind = linear_sum_assignment(cost_matrix)
+ 
+    # Print both sets of centroids for inspection before showing the distances.
+    print_centroid_list("Final Centroids (Calculated)", calculated)
+    print_centroid_list("Answer Centroids (Ground Truth)", answers)
 
+    # --- Display the distance for each matched pair ---
+    print("\n--- Distances between Matched Final and Answer Centroids ---")
+    distances = cost_matrix[row_ind, col_ind]
+    for i in range(len(row_ind)): # type: ignore
+        # calculated_idx -> answer_idx
+        print(f"  Calculated Centroid {row_ind[i]:<2} <-> Answer Centroid {col_ind[i]:<2} | Distance: {distances[i]:.6f}")
+ 
     # Check if the distance for each matched pair is within the tolerance.
-    total_distance = 0
-    for r, c in zip(row_ind, col_ind):
-        distance = cost_matrix[r, c]
-        total_distance += distance
-        if distance > tolerance:
-            print(f"Validation Failed: Centroid pair distance ({distance:.6f}) exceeds tolerance ({tolerance}).")
-            return False
-    
-    print(f"Validation Successful! All centroid pairs are within tolerance. Total distance: {total_distance:.6f}")
+    max_distance = distances.max()
+ 
+    if max_distance > tolerance:
+        print(f"\nValidation Failed: Maximum centroid distance ({max_distance:.6f}) exceeds tolerance ({tolerance}).")
+        return False
+ 
+    print(f"\nValidation Successful! All matched centroid pairs are within tolerance. Max distance: {max_distance:.6f}")
     return True
 
-def validate_point_assignments(points, final_centroids, threshold=1e-5):
+def validate_point_assignments(points, final_centroids, answer_centroids, tolerance=1e-5):
     """
-    Validates the k-means result by checking if points are assigned to their
-    optimal cluster, based on the user's specified method.
+    Validates the clustering quality by comparing the distance from each point
+    to its closest calculated centroid versus its closest answer centroid.
+    A point is "wrong" if this difference exceeds a tolerance.
     """
-    print("\n--- Validating Point Assignments for Stability ---")
+    print("\n--- Validating Clustering Quality against Answer ---")
     points_np = np.array(points)
-    centroids_np = np.array(final_centroids)
-    num_clusters = len(centroids_np)
+    final_centroids_np = np.array(final_centroids)
+    answer_centroids_np = np.array(answer_centroids)
     num_points = len(points_np)
 
-    # 1. For each point, find its closest centroid from the final set.
-    # This gives us the 'optimal' assignment for each point.
-    dist = np.linalg.norm(points_np[:, np.newaxis, :] - centroids_np[np.newaxis, :, :], axis=2)
-    optimal_assignments = np.argmin(dist, axis=1)
+    # 1. For each point, find the distance to its closest CALCULATED centroid.
+    dist_to_final = np.linalg.norm(points_np[:, np.newaxis, :] - final_centroids_np[np.newaxis, :, :], axis=2)
+    min_dist_to_final = np.min(dist_to_final, axis=1)
 
-    # 2. Compute `dis0`: the distance from each point to its closest centroid.
-    dis0 = np.min(dist, axis=1)
+    # 2. For each point, find the distance to its closest ANSWER centroid.
+    dist_to_answer = np.linalg.norm(points_np[:, np.newaxis, :] - answer_centroids_np[np.newaxis, :, :], axis=2)
+    min_dist_to_answer = np.min(dist_to_answer, axis=1)
 
-    # 3. Re-calculate centroids based on these optimal assignments.
-    recalculated_centroids = np.array([points_np[optimal_assignments == k].mean(axis=0) for k in range(num_clusters)])
-
-    # 4. Compute `dis1`: the distance from each point to its re-calculated centroid.
-    dis1 = np.array([np.linalg.norm(points_np[i] - recalculated_centroids[optimal_assignments[i]]) for i in range(num_points)])
-
-    # 5. Find wrong points where the difference between dis0 and dis1 is too large.
-    diff = np.abs(dis0 - dis1)
-    wrong_points_indices = np.where(diff > threshold)[0]
+    # 3. A point is "wrong" if the difference between these two minimum distances
+    #    is larger than the tolerance.
+    diff = np.abs(min_dist_to_final - min_dist_to_answer)
+    wrong_points_indices = np.where(diff > tolerance)[0]
 
     num_wrong = len(wrong_points_indices)
     if num_wrong == 0:
-        print(f"Assignment Validation Successful! All {num_points} points are optimally placed.")
+        print(f"Quality Validation Successful! All {num_points} points have optimal distances within tolerance.")
     else:
-        print(f"Assignment Validation Failed: Found {num_wrong} non-optimally placed points.")
-        # Print details for at least 10 wrong points, as requested previously.
+        print(f"Quality Validation Failed: Found {num_wrong} points with suboptimal distances.")
+        # Print details for up to 10 wrong points.
         for i, point_idx in enumerate(wrong_points_indices[:40]):
-            print(f"  - Point {point_idx}: dis0={dis0[point_idx]:.6f}, dis1={dis1[point_idx]:.6f}, diff={diff[point_idx]:.6f}")
+            print(f"  - Point {point_idx}: dist_to_final={min_dist_to_final[point_idx]:.6f}, dist_to_answer={min_dist_to_answer[point_idx]:.6f}, diff={diff[point_idx]:.6f}")
         if num_wrong > 10:
             print("  ...")
     
@@ -167,18 +187,17 @@ def run_executable():
     # --- CONFIGURE YOUR K-MEANS ARGUMENTS HERE ---
     # This example assumes an input file at 'data/points_2d_1000.txt'
     # with 2 dimensions. Adjust these values for your dataset.
-    input_file = "inputs/random-n16384-d24-c16.txt"
+    input_file = "inputs/random-n65536-d32-c16.txt"
     args = [
         "-i", input_file,                # Input file
         "-k", "16",                       # Number of clusters
-        "-d", "24",                       # Dimensions of data
+        "-d", "32",                       # Dimensions of data
         "-e", "cuda",                    # Execution method: cuda, seq, or thrust
         "-t", "0.000001",                  # Convergence threshold
         "-m", "150",                     # Max iterations
-        "-s", "20",                            # Output final centroids
-        # "-n", "500",                     # Max iterations
-        # "-o",                            # Output final centroids
-        "-v"                             # Verbose mode
+        "-s", "8675309",                            # Output final centroids
+        "-v",                             # Verbose mode
+        "-c"
     ]
 
     command = [executable_path] + args
@@ -208,10 +227,10 @@ def run_executable():
             if answer_centroids:
                 # 1. Compare the final centroids directly to the answer centroids
                 print(f"\n--- Comparing Final Centroids against Answer File: {answer_file} ---")
-                compare_centroids(final_centroids, answer_centroids)
+                compare_centroids(final_centroids, answer_centroids, tolerance=1e-5)
                 # 2. Validate the stability of the point assignments
                 points = read_points_file(input_file, has_header=True)
-                validate_point_assignments(points, final_centroids)
+                validate_point_assignments(points, final_centroids, answer_centroids)
 
     except subprocess.CalledProcessError as e:
         print("\n>>> Execution Failed! <<<")

@@ -1,69 +1,52 @@
-#ifndef KMEANS_KERNEL_CUH
-#define KMEANS_KERNEL_CUH
-
-#include <cuda_runtime.h>
-
 /**
- * @brief Assigns each point to the nearest cluster centroid.
+ * @brief Assigns each data point to the nearest cluster centroid.
  *
- * Each thread processes one point. It calculates the squared Euclidean distance
- * to every centroid and finds the index of the centroid with the minimum distance.
+ * This kernel is launched with one thread per data point. Each thread calculates
+ * the distance from its assigned point to every centroid and writes the index
+ * of the closest centroid to the `cluster_assignments` array.
  *
  * @param points Device pointer to the input data points.
- * @param centroids Device pointer to the current cluster centroids.
- * @param cluster_assignments Device pointer to store the assigned cluster index for each point.
- * @param num_points Total number of points.
- * @param num_clusters Total number of clusters.
- * @param dims The dimensionality of each point.
+ * @param centroids Device pointer to the current centroids.
+ * @param cluster_assignments Device pointer to an array where the assigned cluster for each point will be stored.
+ * @param num_points The total number of data points.
+ * @param num_clusters The number of clusters (k).
+ * @param dims The number of dimensions for each point and centroid.
  */
-__global__ void assign_clusters_kernel(const float* points, const float* centroids, int* cluster_assignments, int num_points, int num_clusters, int dims);
+__global__ void assign_clusters_kernel(const double* points, const double* centroids, int* cluster_assignments, int num_points, int num_clusters, int dims);
 
 /**
- * @brief Sums the coordinates of all points belonging to each cluster.
+ * @brief Resets the centroid sum and count buffers to zero.
  *
- * This is the first stage of a two-pass reduction. Each thread block calculates
- * its own partial sum and count for each cluster, writing the result to a
- * block-specific location in global memory. This avoids using global atomics.
+ * This kernel is launched with one thread per centroid. It initializes the
+ * summation buffer and the cluster count buffer before the main summation happens.
  *
- * @param points Device pointer to the input data points.
- * @param cluster_assignments Device pointer to the assigned cluster for each point.
- * @param partial_centroid_sums Device pointer to store the partial sum of points for each cluster from each block.
- * @param partial_cluster_counts Device pointer to store the partial count of points in each cluster from each block.
- * @param num_points Total number of points.
- * @param num_clusters Total number of clusters.
- * @param dims The dimensionality of each point.
+ * @param d_new_centroids_sum Device pointer to the buffer storing the sum of coordinates for each cluster.
+ * @param d_cluster_counts Device pointer to the buffer storing the number of points in each cluster.
+ * @param num_clusters The number of clusters (k).
+ * @param dims The number of dimensions for each point.
  */
-__global__ void sum_points_for_clusters_kernel(const float* points, const int* cluster_assignments, float* partial_centroid_sums, int* partial_cluster_counts, int num_points, int num_clusters, int dims);
+__global__ void reset_update_buffers_kernel(double* d_new_centroids_sum, int* d_cluster_counts, int num_clusters, int dims);
 
 /**
- * @brief Reduces the partial sums from all blocks into a final sum.
+ * @brief Atomically adds each point's coordinates to its assigned cluster's sum.
  *
- * This is the second stage of the reduction. Each thread is responsible for
- * reducing the partial sums for one dimension of one cluster.
- * 
- * @param grid_size The number of blocks used in the first kernel (sum_points_for_clusters_kernel).
+ * This kernel is launched with one thread per data point. Each thread reads its
+ * assigned cluster and adds its coordinate data to the corresponding location
+ * in `d_new_centroids_sum`. It also increments the count for that cluster.
+ *
+ * @param d_points Device pointer to the input data points.
+ * @param d_cluster_assignments Device pointer to the cluster assignment for each point.
+ * @param d_new_centroids_sum Device pointer to the buffer for summing coordinates.
+ * @param d_cluster_counts Device pointer to the buffer for counting points per cluster.
+ * @param num_points The total number of data points.
+ * @param dims The number of dimensions.
  */
-__global__ void reduce_partial_sums_kernel(const float* partial_centroid_sums, const int* partial_cluster_counts, float* final_centroid_sums, int* final_cluster_counts, int num_clusters, int dims, int grid_size);
+__global__ void update_centroids_sum_kernel(const double* d_points, const int* d_cluster_assignments, double* d_new_centroids_sum, int* d_cluster_counts, int num_points, int dims);
 
 /**
- * @brief Calculates the new centroids by averaging the sums.
- * 
- * Each thread processes one cluster. It divides the sum of points for that cluster
- * by the number of points in it to get the new centroid. If a cluster is empty,
- * its centroid is not updated.
- */
-__global__ void average_clusters_kernel(float* centroids, const float* centroid_sums, const int* cluster_counts, int num_clusters, int dims);
-
-/**
- * @brief Checks if the centroids have moved less than a given threshold.
+ * @brief Calculates the new centroids by dividing the sums by the counts.
  *
- * Each thread processes one cluster. It calculates the squared Euclidean distance
- * between the old and new centroid positions. If this distance exceeds the
- * squared threshold for any centroid, a convergence flag is set to 0 (false).
- *
- * @param threshold_sq The squared convergence threshold.
+ * This kernel is launched with one thread per centroid. It computes the average
+ * for each cluster and writes the result to the main `d_centroids` array.
  */
-__global__ void check_convergence_kernel(const float* old_centroids, const float* new_centroids, int* converged_flag, int num_clusters, int dims, float threshold_sq);
-
-
-#endif // KMEANS_KERNEL_CUH
+__global__ void calculate_new_centroids_kernel(double* d_centroids, const double* d_new_centroids_sum, const int* d_cluster_counts, int num_clusters, int dims);

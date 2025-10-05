@@ -6,15 +6,10 @@ EXEC = bin/kmeans
 
 # Source files
 # nvcc will use the host compiler (like g++) for .cpp files automatically.
-SRCS = src/kmeans.cu \
-       src/argparse.cu \
-       src/io.cu \
-       src/dataset.cu \
-       src/thrust_kmeans.cu \
-       src/kmeans_kernel.cu 
+SRCS = src/*.cu
 
 # Compiler flags
-NVCCFLAGS = -std=c++17 -O3 -Isrc
+NVCCFLAGS = -std=c++17 -O3 -Isrc -arch=sm_60
 
 # --- Rules ---
 .PHONY: all clean

@@ -1,149 +1,91 @@
 #include "kmeans_kernel.cuh"
-#include <float.h> // For FLT_MAX
+#include <float.h> // For DBL_MAX
+#include <stdio.h> // For printf
 
-__global__ void assign_clusters_kernel(const float* points,
-                                       const float* centroids,
-                                       int* cluster_assignments,
-                                       int num_points,
-                                       int num_clusters,
-                                       int dims) {
+__global__ void assign_clusters_kernel(const double* points, const double* centroids, int* cluster_assignments, int num_points, int num_clusters, int dims) {
+    // Get the unique index for this thread, which corresponds to a data point.
     int point_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (point_idx < num_points) {
-        float min_dist = FLT_MAX;
-        int best_cluster = -1;
-
-        // Find the closest centroid for the current point
-        for (int cluster_idx = 0; cluster_idx < num_clusters; ++cluster_idx) {
-            float current_dist = 0.0f;
-            // Calculate squared Euclidean distance
-            for (int dim_idx = 0; dim_idx < dims; ++dim_idx) {
-                float diff = points[point_idx * dims + dim_idx] - centroids[cluster_idx * dims + dim_idx];
-                current_dist += diff * diff;
-            }
-
-            if (current_dist < min_dist) {
-                min_dist = current_dist;
-                best_cluster = cluster_idx;
-            }
-        }
-        cluster_assignments[point_idx] = best_cluster;
+    // Bounds check: ensure the thread is not accessing beyond the number of points.
+    if (point_idx >= num_points) {
+        return;
     }
+
+    double min_dist_sq = DBL_MAX;
+    int best_cluster = 0; // Default to the first cluster
+
+    // Find the closest centroid for the current point.
+    for (int cluster_idx = 0; cluster_idx < num_clusters; ++cluster_idx) {
+        double current_dist_sq = 0.0;
+        
+        // Calculate squared Euclidean distance to save on sqrt() operations.
+        for (int dim_idx = 0; dim_idx < dims; ++dim_idx) {
+            double diff = points[point_idx * dims + dim_idx] - centroids[cluster_idx * dims + dim_idx];
+            current_dist_sq += diff * diff;
+        }
+        if (current_dist_sq < min_dist_sq) {
+            min_dist_sq = current_dist_sq;
+            best_cluster = cluster_idx;
+        }
+    }
+    // Assign the point to the closest cluster.
+    cluster_assignments[point_idx] = best_cluster;
 }
 
-__global__ void sum_points_for_clusters_kernel(const float* points,
-                                               const int* cluster_assignments,
-                                               float* partial_centroid_sums,
-                                               int* partial_cluster_counts,
-                                               int num_points,
-                                               int num_clusters,
-                                               int dims) {
-    // Using shared memory to store per-block sums to avoid global atomics.
-    // This assumes `num_clusters * dims` is small enough for shared memory.
-    // For larger `k` or `dims`, this would need a different strategy.
-    extern __shared__ float s_sums[];
-    int* s_counts = (int*)(&s_sums[num_clusters * dims]);
-    
-    // Initialize shared memory
-    for (int i = threadIdx.x; i < num_clusters * dims; i += blockDim.x) {
-        s_sums[i] = 0.0f;
-    }
-    for (int i = threadIdx.x; i < num_clusters; i += blockDim.x) {
-        s_counts[i] = 0;
-    }
-    __syncthreads();
-    
-    // Each thread processes a subset of points using a grid-stride loop.
-    for (int point_idx = blockIdx.x * blockDim.x + threadIdx.x; point_idx < num_points; point_idx += gridDim.x * blockDim.x) {
-        int assigned_cluster = cluster_assignments[point_idx];
-        if (assigned_cluster != -1) {
-            // Atomically update the count for this cluster in shared memory.
-            atomicAdd(&s_counts[assigned_cluster], 1);
-            for (int dim_idx = 0; dim_idx < dims; ++dim_idx) {
-                // Atomically update the sum for each dimension of the cluster.
-                atomicAdd(&s_sums[assigned_cluster * dims + dim_idx], points[point_idx * dims + dim_idx]);
-            }
-        }
-    }
-    __syncthreads();
-
-    // Each thread writes a portion of the shared memory results to global memory.
-    // This is a parallel write, not just thread 0.
-    for (int i = threadIdx.x; i < num_clusters * dims; i += blockDim.x) {
-        partial_centroid_sums[blockIdx.x * num_clusters * dims + i] = s_sums[i];
-    }
-    for (int i = threadIdx.x; i < num_clusters; i += blockDim.x) {
-        partial_cluster_counts[blockIdx.x * num_clusters + i] = s_counts[i];
-    }
-}
-
-__global__ void reduce_partial_sums_kernel(const float* partial_centroid_sums,
-                                           const int* partial_cluster_counts,
-                                           float* final_centroid_sums,
-                                           int* final_cluster_counts,
-                                           int num_clusters, int dims, int grid_size) {
-    // Each thread is responsible for one element of the final sums/counts array.
-    int global_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    
-    // The first (num_clusters * dims) threads handle the sums.
-    if (global_idx < (num_clusters * dims)) {
-        float total_sum = 0.0f;
-        for (int block_id = 0; block_id < grid_size; ++block_id) {
-            total_sum += partial_centroid_sums[block_id * num_clusters * dims + global_idx];
-        }
-        final_centroid_sums[global_idx] = total_sum;
-    } 
-    // The next (num_clusters) threads handle the counts.
-    else if (global_idx < (num_clusters * dims + num_clusters)) {
-        int cluster_idx = global_idx - (num_clusters * dims);
-        int total_count = 0;
-        for (int block_id = 0; block_id < grid_size; ++block_id) {
-            total_count += partial_cluster_counts[block_id * num_clusters + cluster_idx];
-        }
-        final_cluster_counts[cluster_idx] = total_count;
-    }
-}
-
-__global__ void average_clusters_kernel(float* centroids,
-                                        const float* centroid_sums,
-                                        const int* cluster_counts,
-                                        int num_clusters,
-                                        int dims) {
+__global__ void reset_update_buffers_kernel(double* d_new_centroids_sum, int* d_cluster_counts, int num_clusters, int dims) {
     int cluster_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (cluster_idx < num_clusters) {
-        int count = cluster_counts[cluster_idx];
+    if (cluster_idx >= num_clusters) {
+        return;
+    }
 
-        // Avoid division by zero for empty clusters
-        if (count > 0) {
-            for (int dim_idx = 0; dim_idx < dims; ++dim_idx) {
-                // Calculate the new centroid by averaging
-                centroids[cluster_idx * dims + dim_idx] = centroid_sums[cluster_idx * dims + dim_idx] / count;
-            }
-        }
+    // Reset the count for this cluster to zero.
+    d_cluster_counts[cluster_idx] = 0;
+
+    // Reset the sum of coordinates for this cluster to zero.
+    for (int dim_idx = 0; dim_idx < dims; ++dim_idx) {
+        d_new_centroids_sum[cluster_idx * dims + dim_idx] = 0.0;
     }
 }
 
-__global__ void check_convergence_kernel(const float* old_centroids,
-                                         const float* new_centroids,
-                                         int* converged_flag,
-                                         int num_clusters,
-                                         int dims,
-                                         float threshold_sq) {
+__global__ void update_centroids_sum_kernel(const double* d_points, const int* d_cluster_assignments, double* d_new_centroids_sum, int* d_cluster_counts, int num_points, int dims) {
+    int point_idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (point_idx >= num_points) {
+        return;
+    }
+
+    // Get the cluster this point is assigned to.
+    int assigned_cluster = d_cluster_assignments[point_idx];
+
+    // Atomically increment the count for this cluster.
+    atomicAdd(&d_cluster_counts[assigned_cluster], 1);
+
+    // Atomically add this point's coordinates to the sum for its cluster.
+    // Note: atomicAdd for double requires a device with compute capability 6.x or higher.
+    for (int dim_idx = 0; dim_idx < dims; ++dim_idx) {
+        double point_coord = d_points[point_idx * dims + dim_idx];
+        atomicAdd(&d_new_centroids_sum[assigned_cluster * dims + dim_idx], point_coord);
+    }
+}
+
+__global__ void calculate_new_centroids_kernel(double* d_centroids, const double* d_new_centroids_sum, const int* d_cluster_counts, int num_clusters, int dims) {
     int cluster_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (cluster_idx < num_clusters) {
-        float dist_sq = 0.0f;
-        // Calculate the squared Euclidean distance between the old and new centroid
-        for (int d = 0; d < dims; ++d) {
-            float diff = old_centroids[cluster_idx * dims + d] - new_centroids[cluster_idx * dims + d];
-            dist_sq += diff * diff;
-        }
+    if (cluster_idx >= num_clusters) {
+        return;
+    }
 
-        // If any centroid moved more than the threshold, set the flag to 0 (not converged)
-        if (dist_sq > threshold_sq) {
-            // Use an atomic operation to ensure only one thread writes at a time, preventing race conditions.
-            atomicMin(converged_flag, 0);
+    int count = d_cluster_counts[cluster_idx];
+
+    // Avoid division by zero if a cluster becomes empty.
+    // In this case, the old centroid position is kept.
+    if (count > 0) {
+        for (int dim_idx = 0; dim_idx < dims; ++dim_idx) {
+            // Calculate the new centroid position (mean).
+            d_centroids[cluster_idx * dims + dim_idx] = d_new_centroids_sum[cluster_idx * dims + dim_idx] / count;
         }
     }
+    // If count is 0, we do nothing, leaving the centroid at its previous position.
+    // A more advanced implementation might re-initialize empty clusters.
 }

@@ -4,3 +4,7 @@
 *.ptx
 *.cubin
 *.fatbin
+
+
+test_runner.py
+python_kmeans.py
