@@ -7,7 +7,11 @@
 #include "dataset.cuh"
 #include "kmeans_kernel.cuh" // For CUDA kernels
 #include "error.cuh"         // For HANDLE_CUDA_ERROR
+#include <iomanip> // Required for setprecision and fixed
 
+// For log10, ceil, and std::min
+#include <cmath>
+#include <algorithm>
 
 #include <stdio.h>
 #include <iostream>
@@ -27,6 +31,13 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
         std::cout << "Executing CUDA K-Means..." << std::endl;
     }
 
+
+    // --- CUDA Events for Timing ---
+    cudaEvent_t start, stop;
+    HANDLE_CUDA_ERROR(cudaEventCreate(&start));
+    HANDLE_CUDA_ERROR(cudaEventCreate(&stop));
+    HANDLE_CUDA_ERROR(cudaEventRecord(start)); // Start timer before the loop
+    
     // Extract data dimensions for clarity
     const int num_points = data.num_points;
     const int dims = data.dims;
@@ -71,7 +82,10 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
 
     if (verbose) std::cout << "Starting K-Means iterations..." << std::endl;
 
+    int iter_to_converge = 0;
     for (int iter = 0; iter < max_num_iter; ++iter) {
+        iter_to_converge = iter + 1;
+
         // Store current centroids in d_old_centroids to check for convergence
         HANDLE_CUDA_ERROR(cudaMemcpy(d_old_centroids, data.d_centroids, centroids_size, cudaMemcpyDeviceToDevice));
 
@@ -97,12 +111,44 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
             data.d_centroids, d_new_centroids_sum, d_cluster_counts, num_cluster, dims);
         HANDLE_CUDA_ERROR(cudaGetLastError());
 
+        // == Convergence Check ==
+        // 1. Initialize convergence flag on device to 1 (true)
+        h_converged = 1;
+        HANDLE_CUDA_ERROR(cudaMemcpy(d_converged, &h_converged, sizeof(int), cudaMemcpyHostToDevice));
+
+        // 2. Launch kernel to check if any centroid moved more than the threshold
+        check_convergence_kernel<<<cluster_blocks, threads_per_block>>>(
+            data.d_centroids, d_old_centroids, d_converged, num_cluster, dims, threshold_sq);
+        HANDLE_CUDA_ERROR(cudaGetLastError());
+
+        // 3. Copy the flag back to the host
+        HANDLE_CUDA_ERROR(cudaMemcpy(&h_converged, d_converged, sizeof(int), cudaMemcpyDeviceToHost));
+
+        // 4. If converged, break the loop
+        if (h_converged) {
+            if (verbose) std::cout << "Convergence reached after " << iter_to_converge << " iterations." << std::endl;
+            break;
+        }
     }
 
-    if (verbose) std::cout << "K-Means iterations finished." << std::endl;
+    // --- Stop Timer and Report ---
+    HANDLE_CUDA_ERROR(cudaEventRecord(stop));
+    HANDLE_CUDA_ERROR(cudaEventSynchronize(stop)); // Wait for all GPU work to finish
+    float total_milliseconds = 0;
+    HANDLE_CUDA_ERROR(cudaEventElapsedTime(&total_milliseconds, start, stop));
+
+    if (iter_to_converge == max_num_iter && !h_converged) {
+        if (verbose) std::cout << "Max iterations (" << max_num_iter << ") reached without convergence." << std::endl;
+    }
+
+    // Print the results in the requested format
+    printf("%d,%lf\n", iter_to_converge, total_milliseconds / iter_to_converge);
 
     // --- 4. Copy Final Centroids from Device to Host ---
     HANDLE_CUDA_ERROR(cudaMemcpy(data.h_centroids, data.d_centroids, centroids_size, cudaMemcpyDeviceToHost));
+
+    // Copy the final cluster assignments from the device back to the host
+    HANDLE_CUDA_ERROR(cudaMemcpy(data.h_cluster_assignments, d_cluster_assignments, assignments_size, cudaMemcpyDeviceToHost));
 
     // --- 5. Free GPU Memory ---
     HANDLE_CUDA_ERROR(cudaFree(data.d_points));
@@ -112,6 +158,8 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
     HANDLE_CUDA_ERROR(cudaFree(d_new_centroids_sum));
     HANDLE_CUDA_ERROR(cudaFree(d_cluster_counts));
     HANDLE_CUDA_ERROR(cudaFree(d_converged));
+    HANDLE_CUDA_ERROR(cudaEventDestroy(start));
+    HANDLE_CUDA_ERROR(cudaEventDestroy(stop));
 
     // Set device pointers to null to avoid double free issues
     data.d_points = nullptr;
@@ -153,36 +201,53 @@ int main(int argc, char* argv[]) {
         return 1; // Exit if data reading fails
     }
 
+    // Allocate host memory for final cluster assignments
+    data.h_cluster_assignments = new int[data.num_points];
+
     // Initialize the centroids by randomly selecting points from the dataset
     initialize_centroids(data, params.num_cluster, params.seed);
 
-    // Print a sample of the initial centroids if in verbose mode
-    // if (params.verbose) data.print_centroids();
-
     // Call the main k-means logic
     kmeans(params.num_cluster,
-           data,               // Pass the KmeansData object
+           data,
            params.max_num_iter,
            params.threshold,
            params.output_centroids_flag,
            params.seed,
            params.verbose,
            params.method);
-
-    // If requested, print the final centroids
+    
     if (params.output_centroids_flag) {
+        // If -c is specified, print the final centroids in the requested format
+
         // Calculate precision from threshold. e.g., 0.001 -> 3, 0.000001 -> 6
-        // A double has about 15-17 decimal digits of precision.
-        int precision = 15;
+        // A double has about 15-17 decimal digits of precision, so we cap it.
+        int precision = 8; // Default precision
         if (params.threshold > 0) {
-            precision = std::max(15, static_cast<int>(ceil(-log10(params.threshold))));
+            precision = std::min(15, static_cast<int>(ceil(-log10(params.threshold))));
         }
-        data.print_centroids(precision);
+
+        for (int i = 0; i < data.num_centroids; ++i) {
+            printf("%d", i);
+            for (int d = 0; d < data.dims; ++d) {
+                // Use dynamic precision in the format string, e.g., " %.6lf"
+                printf(" %.*lf", precision, data.h_centroids[i * data.dims + d]);
+            }
+            printf("\n");
+        }
+    } else {
+        // If -c is NOT specified, print the cluster assignments for each point
+        printf("clusters:");
+        for (int i = 0; i < data.num_points; ++i) {
+            printf(" %d", data.h_cluster_assignments[i]);
+        }
+        printf("\n");
     }
 
     // Free all host-side memory.
     delete[] data.h_points;
     delete[] data.h_centroids;
+    delete[] data.h_cluster_assignments;
 
     return 0;
 }

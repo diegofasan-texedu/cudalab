@@ -50,3 +50,15 @@ __global__ void update_centroids_sum_kernel(const double* d_points, const int* d
  * for each cluster and writes the result to the main `d_centroids` array.
  */
 __global__ void calculate_new_centroids_kernel(double* d_centroids, const double* d_new_centroids_sum, const int* d_cluster_counts, int num_clusters, int dims);
+
+/**
+ * @brief Checks if the centroids have converged.
+ *
+ * This kernel is launched with one thread per centroid. It calculates the squared
+ * distance each centroid has moved. If any centroid has moved more than the
+ * squared threshold, it writes a 0 to the d_converged flag, indicating that
+ * the algorithm has not yet converged.
+ *
+ * @param d_converged A device pointer to a single integer flag. It should be initialized to 1 (true) before the kernel launch.
+ */
+__global__ void check_convergence_kernel(const double* d_centroids, const double* d_old_centroids, int* d_converged, int num_clusters, int dims, double threshold_sq);

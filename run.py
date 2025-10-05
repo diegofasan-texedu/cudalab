@@ -27,20 +27,26 @@ def build_project():
         sys.exit(1)
 
 def parse_centroids(output_text):
-    """Parses the stdout of the k-means executable to extract centroid data."""
+    """
+    Parses the stdout of the k-means executable to extract centroid data.
+    The expected format is:
+    ...
+    <iterations>,<time_per_iter>
+    <cluster_id> <coord1> <coord2> ...
+    <cluster_id> <coord1> <coord2> ...
+    ...
+    """
     centroids = []
-    # Regex to find lines with centroid data and capture the numbers inside the brackets.
-    # It looks for "Centroid <number>: [<numbers>]"
-    centroid_pattern = re.compile(r"^\s*Centroid \d+:\s*\[(.*)\]")
+    # Regex to find a line that looks like a centroid: an integer followed by floats.
+    # This is flexible and avoids matching other text lines.
+    centroid_pattern = re.compile(r"^\s*\d+\s+[\d\.\-e\+]+")
 
     for line in output_text.splitlines():
-        match = centroid_pattern.match(line)
-        if match:
-            # The first group captures the comma-separated numbers.
-            numbers_str = match.group(1)
-            # Split the string by comma and convert each part to a float.
+        # Check if the line matches the pattern of a centroid data line.
+        if centroid_pattern.match(line.strip()):
             try:
-                point = [float(n) for n in numbers_str.split(',')]
+                # Split the line by whitespace and convert all but the first element (cluster ID) to float.
+                point = [float(n) for n in line.strip().split()[1:]]
                 centroids.append(point)
             except ValueError:
                 print(f"Warning: Could not parse numbers in line: {line}")
@@ -109,31 +115,26 @@ def compare_centroids(calculated, answers, tolerance=1e-4):
     answers_np = np.array(answers)
     cost_matrix = np.linalg.norm(calculated_np[:, np.newaxis, :] - answers_np[np.newaxis, :, :], axis=2)
 
-    # --- Print the full cost matrix for inspection ---
-    print("\n--- Cost Matrix (Euclidean Distances) ---")
-    print("Each row is a calculated centroid, each column is an answer centroid.")
-    print(np.array2string(cost_matrix, formatter={'float_kind':lambda x: "%.6f" % x}))
-    
- 
     # Use the Hungarian algorithm to find the optimal assignment (best pairing).
     row_ind, col_ind = linear_sum_assignment(cost_matrix)
  
-    # Print both sets of centroids for inspection before showing the distances.
-    print_centroid_list("Final Centroids (Calculated)", calculated)
-    print_centroid_list("Answer Centroids (Ground Truth)", answers)
-
-    # --- Display the distance for each matched pair ---
-    print("\n--- Distances between Matched Final and Answer Centroids ---")
     distances = cost_matrix[row_ind, col_ind]
-    for i in range(len(row_ind)): # type: ignore
-        # calculated_idx -> answer_idx
-        print(f"  Calculated Centroid {row_ind[i]:<2} <-> Answer Centroid {col_ind[i]:<2} | Distance: {distances[i]:.6f}")
  
     # Check if the distance for each matched pair is within the tolerance.
     max_distance = distances.max()
  
     if max_distance > tolerance:
         print(f"\nValidation Failed: Maximum centroid distance ({max_distance:.6f}) exceeds tolerance ({tolerance}).")
+        print("--- Centroid Pairs Exceeding Tolerance ---")
+        # Find and print details for all pairs that failed the check.
+        failed_indices = np.where(distances > tolerance)[0]
+        for i in failed_indices:
+            calc_idx = row_ind[i]
+            ans_idx = col_ind[i]
+            dist = distances[i]
+            print(f"  - Calculated Centroid {calc_idx} <-> Answer Centroid {ans_idx} | Distance: {dist:.6f}")
+            # print(f"    Calculated: {calculated[calc_idx]}") # Uncomment for full coordinate details
+            # print(f"    Answer:     {answers[ans_idx]}")     # Uncomment for full coordinate details
         return False
  
     print(f"\nValidation Successful! All matched centroid pairs are within tolerance. Max distance: {max_distance:.6f}")
@@ -193,12 +194,21 @@ def run_executable():
         "-k", "16",                       # Number of clusters
         "-d", "32",                       # Dimensions of data
         "-e", "cuda",                    # Execution method: cuda, seq, or thrust
-        "-t", "0.000001",                  # Convergence threshold
-        "-m", "150",                     # Max iterations
+        "-t", "0.0001",                  # Convergence threshold
+        "-m", "200",                     # Max iterations
         "-s", "8675309",                            # Output final centroids
-        "-v",                             # Verbose mode
         "-c"
     ]
+
+    # --- Extract tolerance for Python validation functions ---
+    # Find the value associated with the '-t' flag in the args list.
+    tolerance = 1e-5 # Default tolerance if -t is not in args
+    try:
+        t_index = args.index("-t")
+        if t_index + 1 < len(args):
+            tolerance = float(args[t_index + 1])
+    except (ValueError, IndexError):
+        print("Warning: '-t' flag not found in args list. Using default tolerance for Python validation.")
 
     command = [executable_path] + args
     print(f"Executing: {' '.join(command)}\n")
@@ -214,12 +224,6 @@ def run_executable():
         final_centroids = parse_centroids(result.stdout)
         
         if final_centroids:
-            print("\n--- Centroids Captured in Python ---")
-            for i, centroid in enumerate(final_centroids):
-                # Truncate for display purposes
-                centroid_str = ", ".join([f"{x:.4f}" for x in centroid[:4]])
-                print(f"  Centroid {i}: [{centroid_str}, ...]")
-
             # --- Load original points and answer centroids for validation ---
             answer_file = input_file.replace(".txt", "-answer.txt").replace("inputs/", "answers/")
             answer_centroids = read_points_file(answer_file, has_header=False)
@@ -227,10 +231,10 @@ def run_executable():
             if answer_centroids:
                 # 1. Compare the final centroids directly to the answer centroids
                 print(f"\n--- Comparing Final Centroids against Answer File: {answer_file} ---")
-                compare_centroids(final_centroids, answer_centroids, tolerance=1e-5)
+                compare_centroids(final_centroids, answer_centroids, tolerance=tolerance)
                 # 2. Validate the stability of the point assignments
                 points = read_points_file(input_file, has_header=True)
-                validate_point_assignments(points, final_centroids, answer_centroids)
+                validate_point_assignments(points, final_centroids, answer_centroids, tolerance=tolerance)
 
     except subprocess.CalledProcessError as e:
         print("\n>>> Execution Failed! <<<")

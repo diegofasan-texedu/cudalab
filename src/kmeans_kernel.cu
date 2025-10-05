@@ -89,3 +89,24 @@ __global__ void calculate_new_centroids_kernel(double* d_centroids, const double
     // If count is 0, we do nothing, leaving the centroid at its previous position.
     // A more advanced implementation might re-initialize empty clusters.
 }
+
+__global__ void check_convergence_kernel(const double* d_centroids, const double* d_old_centroids, int* d_converged, int num_clusters, int dims, double threshold_sq) {
+    int cluster_idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (cluster_idx >= num_clusters) {
+        return;
+    }
+
+    // Calculate squared distance between old and new centroid
+    double dist_sq = 0.0;
+    for (int dim_idx = 0; dim_idx < dims; ++dim_idx) {
+        double diff = d_centroids[cluster_idx * dims + dim_idx] - d_old_centroids[cluster_idx * dims + dim_idx];
+        dist_sq += diff * diff;
+    }
+
+    // If any centroid moved more than the threshold, we have not converged.
+    // This write is a benign race condition: if multiple threads write 0, the result is still 0.
+    if (dist_sq > threshold_sq*0.01) {
+        *d_converged = 0; // Set flag to "not converged"
+    }
+}

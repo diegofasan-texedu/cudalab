@@ -18,11 +18,14 @@ struct KmeansData {
     double* h_centroids = nullptr; // on the host (CPU)
     double* d_centroids = nullptr; // on the device (GPU)
 
+    // Cluster assignments for each point
+    int* h_cluster_assignments = nullptr; // on the host (CPU)
+
     // Print a sample of the points
     void print_points() const;
 
     // Print a sample of the centroids
-    void print_centroids(int precision = 12) const;
+    void print_centroids(int precision = 6) const;
 };
 
 /**

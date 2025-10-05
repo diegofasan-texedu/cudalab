@@ -40,6 +40,8 @@ bool read_points(const char* filename, KmeansData& data, bool verbose) {
 
     infile.close();
 
-    std::cout << "Successfully read " << data.num_points << " points from " << filename << std::endl;
+    if (verbose) {
+        std::cout << "Successfully read " << data.num_points << " points from " << filename << std::endl;
+    }
     return true;
 }
