@@ -1,10 +1,15 @@
 // Cuda Method kernels
 __global__ void assign_clusters_kernel(const double* points, const double* centroids, int* cluster_assignments, int num_points, int num_clusters, int dims);
 
-__global__ void reset_update_buffers_kernel(double* d_new_centroids_sum, int* d_cluster_counts, int num_clusters, int dims);
+__global__ void calculate_and_reset_kernel(double* d_centroids, double* d_new_centroids_sum, int* d_cluster_counts, int num_clusters, int dims);
+
+__global__ void check_convergence_kernel(const double* d_centroids, const double* d_old_centroids, int* d_converged, int num_clusters, int dims, double threshold_sq);
 
 __global__ void update_centroids_sum_kernel(const double* d_points, const int* d_cluster_assignments, double* d_new_centroids_sum, int* d_cluster_counts, int num_points, int dims);
 
-__global__ void calculate_new_centroids_kernel(double* d_centroids, const double* d_new_centroids_sum, const int* d_cluster_counts, int num_clusters, int dims);
+// shared memory cuda kernels
+__global__ void assign_clusters_smem_kernel(const double* points, const double* centroids, int* cluster_assignments, int num_points, int num_clusters, int dims);
 
-__global__ void check_convergence_kernel(const double* d_centroids, const double* d_old_centroids, int* d_converged, int num_clusters, int dims, double threshold_sq);
+__global__ void update_centroids_sum_smem_kernel(const double* d_points, const int* d_cluster_assignments, double* d_new_centroids_sum, int* d_cluster_counts, int num_points, int num_clusters, int dims);
+
+__global__ void calculate_and_reset_smem_kernel(double* d_centroids, double* d_new_centroids_sum, int* d_cluster_counts, int num_clusters, int dims);

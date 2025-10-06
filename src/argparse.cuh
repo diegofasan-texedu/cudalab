@@ -5,7 +5,7 @@
  * @brief Enum to specify the k-means implementation method.
  */
 enum ExecutionMethod {
-    UNSPECIFIED, SEQ, CUDA, THRUST
+    UNSPECIFIED, SEQ, CUDA, THRUST, SMEMCUDA
 };
 
 /**

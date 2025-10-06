@@ -215,13 +215,13 @@ def run_executable():
     # This example assumes an input file at 'data/points_2d_1000.txt'
     # with 2 dimensions. Adjust these values for your dataset.
     # input_file = "inputs/random-n2048-d16-c16.txt"
-    # input_file = "inputs/random-n16384-d24-c16.txt"
+    input_file = "inputs/random-n16384-d24-c16.txt"
     input_file = "inputs/random-n65536-d32-c16.txt"
     args = [
         "-i", input_file,                # Input file
         "-k", "16",                      # Number of clusters
         "-d", "32",                      # Dimensions of data
-        "-e", "seq",                    # Execution method: cuda, seq, or thrust
+        "-e", "smemcuda",                    # Execution method: cuda, seq, or thrust
         "-t", "0.0001",                  # Convergence threshold
         "-m", "200",                     # Max iterations
         "-s", "8675309",                 # Seed

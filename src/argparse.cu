@@ -48,8 +48,10 @@ bool parse_args(int argc, char* argv[], KMeansParams& params) {
                     params.method = CUDA;
                 } else if (strcmp(optarg, "thrust") == 0) {
                     params.method = THRUST;
+                } else if (strcmp(optarg, "smemcuda") == 0) {
+                    params.method = SMEMCUDA;
                 } else {
-                    fprintf(stderr, "Invalid method '%s'. Choose from 'seq', 'cuda', or 'thrust'.\n", optarg);
+                    fprintf(stderr, "Invalid method '%s'. Choose from 'seq', 'cuda', 'smemcuda', or 'thrust'.\n", optarg);
                     return false;
                 }
                 break;
@@ -87,6 +89,9 @@ bool parse_args(int argc, char* argv[], KMeansParams& params) {
                 break;
             case THRUST:
                 std::cout << "thrust";
+                break;
+            case SMEMCUDA:
+                std::cout << "smemcuda";
                 break;
             case UNSPECIFIED:
                 std::cout << "UNSPECIFIED (Error)";

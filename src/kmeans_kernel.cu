@@ -31,20 +31,48 @@ __global__ void assign_clusters_kernel(const double* points, const double* centr
     cluster_assignments[point_idx] = best_cluster;
 }
 
-__global__ void reset_update_buffers_kernel(double* d_new_centroids_sum, int* d_cluster_counts, int num_clusters, int dims) {
-    int cluster_idx = blockIdx.x * blockDim.x + threadIdx.x;
+__global__ void assign_clusters_smem_kernel(const double* points, const double* centroids, int* cluster_assignments, int num_points, int num_clusters, int dims) {
+    // Dynamically allocate shared memory for centroids. The size is passed during kernel launch.
+    extern __shared__ double smem_centroids[];
 
-    if (cluster_idx >= num_clusters) {
+    // Cooperatively load all centroids from global memory into shared memory.
+    // Each thread loads one or more values.
+    int num_centroid_values = num_clusters * dims;
+    for (int i = threadIdx.x; i < num_centroid_values; i += blockDim.x) {
+        smem_centroids[i] = centroids[i];
+    }
+    
+    // Synchronize all threads in the block to ensure centroids are fully loaded
+    // before any thread starts using them.
+    __syncthreads();
+
+    // Get the unique index for this thread, which corresponds to a data point.
+    int point_idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    // Bounds check
+    if (point_idx >= num_points) {
         return;
     }
 
-    // Reset the count for this cluster to zero.
-    d_cluster_counts[cluster_idx] = 0;
+    double min_dist_sq = DBL_MAX;
+    int best_cluster = 0;
 
-    // Reset the sum of coordinates for this cluster to zero.
-    for (int dim_idx = 0; dim_idx < dims; ++dim_idx) {
-        d_new_centroids_sum[cluster_idx * dims + dim_idx] = 0.0;
+    // Find the closest centroid for the current point.
+    // This loop now reads from the much faster shared memory.
+    for (int cluster_idx = 0; cluster_idx < num_clusters; ++cluster_idx) {
+        double current_dist_sq = 0.0;
+        
+        // Calculate squared Euclidean distance.
+        for (int dim_idx = 0; dim_idx < dims; ++dim_idx) {
+            double diff = points[point_idx * dims + dim_idx] - smem_centroids[cluster_idx * dims + dim_idx];
+            current_dist_sq += diff * diff;
+        }
+        if (current_dist_sq < min_dist_sq) {
+            min_dist_sq = current_dist_sq;
+            best_cluster = cluster_idx;
+        }
     }
+    cluster_assignments[point_idx] = best_cluster;
 }
 
 __global__ void update_centroids_sum_kernel(const double* d_points, const int* d_cluster_assignments, double* d_new_centroids_sum, int* d_cluster_counts, int num_points, int dims) {
@@ -68,25 +96,117 @@ __global__ void update_centroids_sum_kernel(const double* d_points, const int* d
     }
 }
 
-__global__ void calculate_new_centroids_kernel(double* d_centroids, const double* d_new_centroids_sum, const int* d_cluster_counts, int num_clusters, int dims) {
-    int cluster_idx = blockIdx.x * blockDim.x + threadIdx.x;
+__global__ void update_centroids_sum_smem_kernel(const double* d_points, const int* d_cluster_assignments, double* d_new_centroids_sum, int* d_cluster_counts, int num_points, int num_clusters, int dims) {
+    // Dynamically allocate shared memory for partial sums and counts.
+    // The layout is: [sums for all clusters/dims][counts for all clusters]
+    extern __shared__ char smem_buf[];
+    double* smem_sums = (double*)smem_buf;
+    int* smem_counts = (int*)(smem_buf + num_clusters * dims * sizeof(double));
 
+    // Initialize shared memory in parallel.
+    int smem_sum_size = num_clusters * dims;
+    for (int i = threadIdx.x; i < smem_sum_size; i += blockDim.x) {
+        smem_sums[i] = 0.0;
+    }
+    for (int i = threadIdx.x; i < num_clusters; i += blockDim.x) {
+        smem_counts[i] = 0;
+    }
+    __syncthreads();
+
+    // Each thread processes a subset of points using a grid-stride loop.
+    int point_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = gridDim.x * blockDim.x;
+
+    for (int p = point_idx; p < num_points; p += stride) {
+        // Get the cluster this point is assigned to.
+        int assigned_cluster = d_cluster_assignments[p];
+
+        // Atomically update the partial count and sums in SHARED memory.
+        // Atomics on shared memory are much faster than on global memory.
+        atomicAdd(&smem_counts[assigned_cluster], 1);
+        for (int dim_idx = 0; dim_idx < dims; ++dim_idx) {
+            double point_coord = d_points[p * dims + dim_idx];
+            atomicAdd(&smem_sums[assigned_cluster * dims + dim_idx], point_coord);
+        }
+    }
+
+    // Synchronize to ensure all threads in the block have finished their partial sums.
+    __syncthreads();
+
+    // Now, have the block cooperatively write its final partial results to global memory.
+    // This reduces global atomic operations from one-per-point to one-per-cluster-per-block.
+    for (int i = threadIdx.x; i < num_clusters; i += blockDim.x) {
+        // Only perform the global atomic if there's something to add.
+        if (smem_counts[i] > 0) {
+            atomicAdd(&d_cluster_counts[i], smem_counts[i]);
+            for (int dim_idx = 0; dim_idx < dims; ++dim_idx) {
+                int index = i * dims + dim_idx;
+                if (smem_sums[index] != 0.0) {
+                    atomicAdd(&d_new_centroids_sum[index], smem_sums[index]);
+                }
+            }
+        }
+    }
+}
+
+__global__ void calculate_and_reset_smem_kernel(double* d_centroids, double* d_new_centroids_sum, int* d_cluster_counts, int num_clusters, int dims) {
+    // One block per cluster.
+    int cluster_idx = blockIdx.x;
     if (cluster_idx >= num_clusters) {
         return;
     }
 
-    int count = d_cluster_counts[cluster_idx];
+    // Use shared memory to store the count for the current cluster.
+    __shared__ int s_count;
 
-    // Avoid division by zero if a cluster becomes empty.
-    // In this case, the old centroid position is kept.
-    if (count > 0) {
-        for (int dim_idx = 0; dim_idx < dims; ++dim_idx) {
-            // Calculate the new centroid position (mean).
-            d_centroids[cluster_idx * dims + dim_idx] = d_new_centroids_sum[cluster_idx * dims + dim_idx] / count;
+    // The first thread in the block loads the count from global memory.
+    if (threadIdx.x == 0) {
+        s_count = d_cluster_counts[cluster_idx];
+    }
+    // Synchronize to ensure s_count is visible to all threads in the block.
+    __syncthreads();
+
+    // Only proceed if the cluster is not empty.
+    if (s_count > 0) {
+        // Parallelize the dimension loop across threads in the block.
+        for (int dim_idx = threadIdx.x; dim_idx < dims; dim_idx += blockDim.x) {
+            int index = cluster_idx * dims + dim_idx;
+            d_centroids[index] = d_new_centroids_sum[index] / s_count;
         }
     }
-    // If count is 0, we do nothing, leaving the centroid at its previous position.
-    // A more advanced implementation might re-initialize empty clusters.
+
+    // Reset buffers for the next iteration in parallel.
+    for (int i = threadIdx.x; i < dims; i += blockDim.x) {
+        d_new_centroids_sum[cluster_idx * dims + i] = 0.0;
+    }
+    if (threadIdx.x == 0) {
+        d_cluster_counts[cluster_idx] = 0;
+    }
+}
+
+__global__ void calculate_and_reset_kernel(double* d_centroids, double* d_new_centroids_sum, int* d_cluster_counts, int num_clusters, int dims) {
+    // Use a grid-stride loop to have each thread handle multiple dimensions.
+    // This allows for a more flexible and efficient grid/block configuration.
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = gridDim.x * blockDim.x;
+
+    // This loop processes all centroid dimensions.
+    for (int index = i; index < num_clusters * dims; index += stride) {
+        int cluster_idx = index / dims;
+        int count = d_cluster_counts[cluster_idx];
+
+        // Calculate the new centroid dimension if the cluster is not empty.
+        if (count > 0) {
+            d_centroids[index] = d_new_centroids_sum[index] / count;
+        }
+        // **Optimization**: Reset the sum buffer for the next iteration.
+        d_new_centroids_sum[index] = 0.0;
+    }
+
+    // Have the first few threads reset the cluster counts array for the next iteration.
+    for (int cluster_idx = i; cluster_idx < num_clusters; cluster_idx += stride) {
+        d_cluster_counts[cluster_idx] = 0;
+    }
 }
 
 __global__ void check_convergence_kernel(const double* d_centroids, const double* d_old_centroids, int* d_converged, int num_clusters, int dims, double threshold_sq) {

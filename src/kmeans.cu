@@ -120,6 +120,111 @@ void sequential_kmeans(int num_cluster, KmeansData& data, int max_num_iter, doub
     printf("%d,%lf\n", iter_to_converge, total_milliseconds.count() / iter_to_converge);
 }
 
+void smem_cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double threshold, bool output_centroids_flag, bool verbose) {
+    if (verbose) {
+        std::cout << "Executing CUDA K-Means with Shared Memory..." << std::endl;
+    }
+
+    cudaEvent_t start, stop;
+    HANDLE_CUDA_ERROR(cudaEventCreate(&start));
+    HANDLE_CUDA_ERROR(cudaEventCreate(&stop));
+    HANDLE_CUDA_ERROR(cudaEventRecord(start));
+    
+    const int num_points = data.num_points;
+    const int dims = data.dims;
+
+    size_t points_size = (size_t)num_points * dims * sizeof(double);
+    size_t centroids_size = (size_t)num_cluster * dims * sizeof(double);
+    size_t assignments_size = (size_t)num_points * sizeof(int);
+
+    double* d_new_centroids_sum;
+    int* d_cluster_counts;
+    int* d_cluster_assignments;
+    double* d_old_centroids;
+    int* d_converged;
+    int h_converged = 0;
+    const double threshold_sq = threshold * threshold;
+
+    HANDLE_CUDA_ERROR(cudaMalloc(&data.d_points, points_size));
+    HANDLE_CUDA_ERROR(cudaMalloc(&data.d_centroids, centroids_size));
+    HANDLE_CUDA_ERROR(cudaMalloc(&d_cluster_assignments, assignments_size));
+    HANDLE_CUDA_ERROR(cudaMalloc(&d_new_centroids_sum, centroids_size));
+    HANDLE_CUDA_ERROR(cudaMalloc(&d_cluster_counts, (size_t)num_cluster * sizeof(int)));
+    HANDLE_CUDA_ERROR(cudaMalloc(&d_old_centroids, centroids_size));
+    HANDLE_CUDA_ERROR(cudaMalloc(&d_converged, sizeof(int)));
+
+    HANDLE_CUDA_ERROR(cudaMemcpy(data.d_points, data.h_points, points_size, cudaMemcpyHostToDevice));
+    HANDLE_CUDA_ERROR(cudaMemcpy(data.d_centroids, data.h_centroids, centroids_size, cudaMemcpyHostToDevice));
+
+    // Optimization: Use cudaMemsetAsync for initial zeroing of buffers.
+    HANDLE_CUDA_ERROR(cudaMemsetAsync(d_new_centroids_sum, 0, centroids_size));
+    HANDLE_CUDA_ERROR(cudaMemsetAsync(d_cluster_counts, 0, (size_t)num_cluster * sizeof(int)));
+
+    int threads_per_block = 256;
+    int point_blocks = (num_points + threads_per_block - 1) / threads_per_block;
+    int cluster_blocks = (num_cluster + threads_per_block - 1) / threads_per_block;
+    size_t smem_size = centroids_size; // Shared memory needed for all centroids
+
+    // Calculate shared memory size for the update kernel.
+    size_t update_smem_size = (num_cluster * dims * sizeof(double)) + (num_cluster * sizeof(int));
+    // It's good practice to check if this exceeds device limits, though for typical
+    // k-means problems it should be fine.
+
+    int iter_to_converge = 0;
+    for (int iter = 0; iter < max_num_iter; ++iter) {
+        iter_to_converge = iter + 1;
+
+        HANDLE_CUDA_ERROR(cudaMemcpy(d_old_centroids, data.d_centroids, centroids_size, cudaMemcpyDeviceToDevice));
+
+        // == Assignment Step (Shared Memory) ==
+        assign_clusters_smem_kernel<<<point_blocks, threads_per_block, smem_size>>>(
+            data.d_points, data.d_centroids, d_cluster_assignments, num_points, num_cluster, dims);
+        HANDLE_CUDA_ERROR(cudaGetLastError());
+
+        // == Update Step (Shared Memory Reduction) ==
+        update_centroids_sum_smem_kernel<<<point_blocks, threads_per_block, update_smem_size>>>(
+            data.d_points, d_cluster_assignments, d_new_centroids_sum, d_cluster_counts, num_points, num_cluster, dims);
+        HANDLE_CUDA_ERROR(cudaGetLastError());
+
+        // Use the shared memory version of the calculate/reset kernel.
+        // Launch one block per cluster.
+        calculate_and_reset_smem_kernel<<<num_cluster, threads_per_block>>>(data.d_centroids, d_new_centroids_sum, d_cluster_counts, num_cluster, dims);
+        HANDLE_CUDA_ERROR(cudaGetLastError());
+
+        h_converged = 1;
+        HANDLE_CUDA_ERROR(cudaMemcpy(d_converged, &h_converged, sizeof(int), cudaMemcpyHostToDevice));
+
+        check_convergence_kernel<<<cluster_blocks, threads_per_block>>>(data.d_centroids, d_old_centroids, d_converged, num_cluster, dims, threshold_sq);
+        HANDLE_CUDA_ERROR(cudaGetLastError());
+
+        HANDLE_CUDA_ERROR(cudaMemcpy(&h_converged, d_converged, sizeof(int), cudaMemcpyDeviceToHost));
+
+        if (h_converged) break;
+    }
+
+    HANDLE_CUDA_ERROR(cudaEventRecord(stop));
+    HANDLE_CUDA_ERROR(cudaEventSynchronize(stop));
+    float total_milliseconds = 0;
+    HANDLE_CUDA_ERROR(cudaEventElapsedTime(&total_milliseconds, start, stop));
+
+    printf("%d,%lf\n", iter_to_converge, total_milliseconds / iter_to_converge);
+
+    HANDLE_CUDA_ERROR(cudaMemcpy(data.h_centroids, data.d_centroids, centroids_size, cudaMemcpyDeviceToHost));
+    HANDLE_CUDA_ERROR(cudaMemcpy(data.h_cluster_assignments, d_cluster_assignments, assignments_size, cudaMemcpyDeviceToHost));
+
+    HANDLE_CUDA_ERROR(cudaFree(data.d_points));
+    HANDLE_CUDA_ERROR(cudaFree(data.d_centroids));
+    HANDLE_CUDA_ERROR(cudaFree(d_cluster_assignments));
+    HANDLE_CUDA_ERROR(cudaFree(d_old_centroids));
+    HANDLE_CUDA_ERROR(cudaFree(d_new_centroids_sum));
+    HANDLE_CUDA_ERROR(cudaFree(d_cluster_counts));
+    HANDLE_CUDA_ERROR(cudaFree(d_converged));
+    HANDLE_CUDA_ERROR(cudaEventDestroy(start));
+    HANDLE_CUDA_ERROR(cudaEventDestroy(stop));
+    data.d_points = nullptr;
+    data.d_centroids = nullptr;
+}
+
 void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double threshold, bool output_centroids_flag, bool verbose) {
     if (verbose) {
         std::cout << "Executing CUDA K-Means..." << std::endl;
@@ -169,6 +274,10 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
     HANDLE_CUDA_ERROR(cudaMemcpy(data.d_points, data.h_points, points_size, cudaMemcpyHostToDevice));
     HANDLE_CUDA_ERROR(cudaMemcpy(data.d_centroids, data.h_centroids, centroids_size, cudaMemcpyHostToDevice));
 
+    // Optimization: Use cudaMemsetAsync for initial zeroing of buffers.
+    HANDLE_CUDA_ERROR(cudaMemsetAsync(d_new_centroids_sum, 0, centroids_size));
+    HANDLE_CUDA_ERROR(cudaMemsetAsync(d_cluster_counts, 0, (size_t)num_cluster * sizeof(int)));
+
     // --- 3. K-Means Iteration Loop ---
     int threads_per_block = 256;
     int point_blocks = (num_points + threads_per_block - 1) / threads_per_block;
@@ -189,19 +298,15 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
             data.d_points, data.d_centroids, d_cluster_assignments, num_points, num_cluster, dims);
         HANDLE_CUDA_ERROR(cudaGetLastError());
 
-        // == Update Step ==
-        // 1. Reset the summation and count buffers to zero.
-        reset_update_buffers_kernel<<<cluster_blocks, threads_per_block>>>(
-            d_new_centroids_sum, d_cluster_counts, num_cluster, dims);
-        HANDLE_CUDA_ERROR(cudaGetLastError());
-
-        // 2. Sum up all the points for each cluster.
+        // == Update Step (Optimized) ==
+        // 1. Sum up all the points for each cluster.
         update_centroids_sum_kernel<<<point_blocks, threads_per_block>>>(
             data.d_points, d_cluster_assignments, d_new_centroids_sum, d_cluster_counts, num_points, dims);
         HANDLE_CUDA_ERROR(cudaGetLastError());
 
-        // 3. Divide sums by counts to get the new centroids.
-        calculate_new_centroids_kernel<<<cluster_blocks, threads_per_block>>>(
+        // 2. Divide sums by counts to get new centroids AND reset buffers for the next iteration.
+        int calc_reset_blocks = (num_cluster * dims + threads_per_block - 1) / threads_per_block;
+        calculate_and_reset_kernel<<<calc_reset_blocks, threads_per_block>>>(
             data.d_centroids, d_new_centroids_sum, d_cluster_counts, num_cluster, dims);
         HANDLE_CUDA_ERROR(cudaGetLastError());
 
@@ -270,6 +375,9 @@ void kmeans(int num_cluster, KmeansData& data, int max_num_iter, double threshol
             break;
         case THRUST:
             thrust_kmeans(num_cluster, data, max_num_iter, threshold, output_centroids_flag, seed, verbose);
+            break;
+        case SMEMCUDA:
+            smem_cuda_kmeans(num_cluster, data, max_num_iter, threshold, output_centroids_flag, verbose);
             break;
         case UNSPECIFIED:
             // This case should ideally not be reached due to argument parsing validation.
