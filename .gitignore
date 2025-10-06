@@ -8,3 +8,8 @@
 
 test_runner.py
 python_kmeans.py
+
+*.sqlite
+*.nsys-rep
+
+py_kmeans.py

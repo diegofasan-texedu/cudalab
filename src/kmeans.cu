@@ -12,6 +12,8 @@
 // For log10, ceil, and std::min
 #include <cmath>
 #include <algorithm>
+#include <vector>
+#include <chrono>
 
 #include <stdio.h>
 #include <iostream>
@@ -21,9 +23,101 @@ void sequential_kmeans(int num_cluster, KmeansData& data, int max_num_iter, doub
         std::cout << "Executing Sequential K-Means..." << std::endl;
     }
 
-    // The implementation for the sequential k-means algorithm will go here.
-    // For now, it's a placeholder.
-    std::cout << "Sequential implementation is not yet complete." << std::endl;
+    auto start_time = std::chrono::high_resolution_clock::now();
+
+    const int num_points = data.num_points;
+    const int dims = data.dims;
+    const double threshold_sq = threshold * threshold;
+
+    // --- 1. Allocate Memory for Intermediate Calculations ---
+    std::vector<double> old_centroids(num_cluster * dims);
+    std::vector<double> new_centroids_sum(num_cluster * dims, 0.0);
+    std::vector<int> cluster_counts(num_cluster, 0);
+
+    int iter_to_converge = 0;
+    bool converged = false;
+
+    // --- 2. K-Means Iteration Loop ---
+    for (int iter = 0; iter < max_num_iter; ++iter) {
+        iter_to_converge = iter + 1;
+
+        // Store current centroids to check for convergence later
+        memcpy(old_centroids.data(), data.h_centroids, (size_t)num_cluster * dims * sizeof(double));
+
+        // == Assignment Step ==
+        // For each point, find the nearest centroid
+        for (int p_idx = 0; p_idx < num_points; ++p_idx) {
+            double min_dist_sq = -1.0;
+            int best_cluster = 0;
+
+            for (int c_idx = 0; c_idx < num_cluster; ++c_idx) {
+                double current_dist_sq = 0.0;
+                // Calculate squared Euclidean distance
+                for (int d_idx = 0; d_idx < dims; ++d_idx) {
+                    double diff = data.h_points[p_idx * dims + d_idx] - data.h_centroids[c_idx * dims + d_idx];
+                    current_dist_sq += diff * diff;
+                }
+
+                if (min_dist_sq < 0 || current_dist_sq < min_dist_sq) {
+                    min_dist_sq = current_dist_sq;
+                    best_cluster = c_idx;
+                }
+            }
+            data.h_cluster_assignments[p_idx] = best_cluster;
+        }
+
+        // == Update Step ==
+        // 1. Reset sum and count buffers
+        std::fill(new_centroids_sum.begin(), new_centroids_sum.end(), 0.0);
+        std::fill(cluster_counts.begin(), cluster_counts.end(), 0);
+
+        // 2. Sum up points for each cluster
+        for (int p_idx = 0; p_idx < num_points; ++p_idx) {
+            int cluster_id = data.h_cluster_assignments[p_idx];
+            cluster_counts[cluster_id]++;
+            for (int d_idx = 0; d_idx < dims; ++d_idx) {
+                new_centroids_sum[cluster_id * dims + d_idx] += data.h_points[p_idx * dims + d_idx];
+            }
+        }
+
+        // 3. Calculate new centroids (mean of points)
+        for (int c_idx = 0; c_idx < num_cluster; ++c_idx) {
+            if (cluster_counts[c_idx] > 0) {
+                for (int d_idx = 0; d_idx < dims; ++d_idx) {
+                    data.h_centroids[c_idx * dims + d_idx] = new_centroids_sum[c_idx * dims + d_idx] / cluster_counts[c_idx];
+                }
+            }
+        }
+
+        // == Convergence Check ==
+        converged = true;
+        for (int c_idx = 0; c_idx < num_cluster; ++c_idx) {
+            double dist_sq = 0.0;
+            for (int d_idx = 0; d_idx < dims; ++d_idx) {
+                double diff = data.h_centroids[c_idx * dims + d_idx] - old_centroids[c_idx * dims + d_idx];
+                dist_sq += diff * diff;
+            }
+            if (dist_sq > threshold_sq) {
+                converged = false;
+                break; // A centroid moved too much, no need to check others
+            }
+        }
+
+        if (converged) {
+            if (verbose) std::cout << "Convergence reached after " << iter_to_converge << " iterations." << std::endl;
+            break;
+        }
+    }
+
+    auto end_time = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> total_milliseconds = end_time - start_time;
+
+    if (iter_to_converge == max_num_iter && !converged) {
+        if (verbose) std::cout << "Max iterations (" << max_num_iter << ") reached without convergence." << std::endl;
+    }
+
+    // Print results in the format: iter_count,avg_iter_ms
+    printf("%d,%lf\n", iter_to_converge, total_milliseconds.count() / iter_to_converge);
 }
 
 void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double threshold, bool output_centroids_flag, bool verbose) {
@@ -138,7 +232,7 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
     HANDLE_CUDA_ERROR(cudaEventElapsedTime(&total_milliseconds, start, stop));
 
     if (iter_to_converge == max_num_iter && !h_converged) {
-        if (verbose) std::cout << "Max iterations (" << max_num_iter << ") reached without convergence." << std::endl;
+        if (verbose) std::cout << "Iters (" << max_num_iter << ") reached without convergence." << std::endl;
     }
 
     // Print the results in the requested format
@@ -160,8 +254,6 @@ void cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, double thr
     HANDLE_CUDA_ERROR(cudaFree(d_converged));
     HANDLE_CUDA_ERROR(cudaEventDestroy(start));
     HANDLE_CUDA_ERROR(cudaEventDestroy(stop));
-
-    // Set device pointers to null to avoid double free issues
     data.d_points = nullptr;
     data.d_centroids = nullptr;
 }
@@ -219,19 +311,13 @@ int main(int argc, char* argv[]) {
     
     if (params.output_centroids_flag) {
         // If -c is specified, print the final centroids in the requested format
-
-        // Calculate precision from threshold. e.g., 0.001 -> 3, 0.000001 -> 6
-        // A double has about 15-17 decimal digits of precision, so we cap it.
-        int precision = 8; // Default precision
-        if (params.threshold > 0) {
-            precision = std::min(15, static_cast<int>(ceil(-log10(params.threshold))));
-        }
-
         for (int i = 0; i < data.num_centroids; ++i) {
-            printf("%d", i);
+            // Print cluster ID, followed by a space
+            printf("%d ", i);
             for (int d = 0; d < data.dims; ++d) {
-                // Use dynamic precision in the format string, e.g., " %.6lf"
-                printf(" %.*lf", precision, data.h_centroids[i * data.dims + d]);
+                // Print each coordinate, followed by a space.
+                // Access pattern is row-major: h_centroids[cluster_id * dims + dim_index]
+                printf("%lf ", data.h_centroids[i * data.dims + d]);
             }
             printf("\n");
         }
