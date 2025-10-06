@@ -78,24 +78,23 @@ struct centroid_distance_functor {
     }
 };
 
-
 /**
- * @brief A custom kernel to perform the multi-dimensional summation using atomicAdd.
- * This is often more straightforward than a full Thrust-based sort/reduce_by_key for
- * the multi-dimensional reduction.
+ * @brief A basic kernel to sum points and count members for each cluster.
+ *
+ * This kernel iterates through each point. For each point, it identifies the
+ * assigned cluster and uses atomic operations to add the point's coordinates
+ * to the cluster's sum and to increment the cluster's count. This is a very
+ * direct and efficient way to perform the reduction step in k-means.
  */
-__global__ void update_centroids_sum_kernel(const float* d_points, const int* d_cluster_assignments, float* d_new_centroids_sum, int num_points, int dims) {
+__global__ void thrust_update_kernel(const float* points, const int* assignments, float* sums, int* counts, int num_points, int dims) {
     int point_idx = blockIdx.x * blockDim.x + threadIdx.x;
- 
-    if (point_idx >= num_points) {
-        return;
-    }
- 
-    int assigned_cluster = d_cluster_assignments[point_idx];
- 
-    for (int dim_idx = 0; dim_idx < dims; ++dim_idx) {
-        float point_coord = d_points[point_idx * dims + dim_idx];
-        atomicAdd(&d_new_centroids_sum[assigned_cluster * dims + dim_idx], point_coord);
+    if (point_idx >= num_points) return;
+
+    int cluster_id = assignments[point_idx];
+    atomicAdd(&counts[cluster_id], 1);
+
+    for (int d = 0; d < dims; ++d) {
+        atomicAdd(&sums[cluster_id * dims + d], points[point_idx * dims + d]);
     }
 }
 
@@ -118,8 +117,8 @@ void thrust_kmeans(int num_cluster, KmeansData& data, int max_num_iter, float th
     thrust::device_vector<float> d_old_centroids(num_cluster * dims);
     
     // Buffers for the update step
-    thrust::device_vector<float> d_scattered_sums(num_cluster * dims);
-    thrust::device_vector<int> d_scattered_counts(num_cluster);
+    thrust::device_vector<float> d_sums(num_cluster * dims);
+    thrust::device_vector<int> d_counts(num_cluster);
 
     // Buffer for convergence check
     thrust::device_vector<float> d_centroid_dist_sq(num_cluster);
@@ -148,61 +147,36 @@ void thrust_kmeans(int num_cluster, KmeansData& data, int max_num_iter, float th
         );
 
         // == B. Update Step ==
-        // This step is a segmented reduction. We will do it in three parts.
+        // We use a simple custom kernel with atomicAdds for the reduction.
+        // This is often simpler and faster than a complex sort/reduce_by_key approach.
+        thrust::fill(d_sums.begin(), d_sums.end(), 0.0f);
+        thrust::fill(d_counts.begin(), d_counts.end(), 0);
 
-        // B.1. Calculate cluster counts.
-        // First, create a temporary sorted copy of assignments to count occurrences.
-        thrust::device_vector<int> d_sorted_assignments = d_cluster_assignments;
-        thrust::sort(d_sorted_assignments.begin(), d_sorted_assignments.end());
-
-        // Use reduce_by_key to count unique assignments.
-        // The keys are the sorted assignments, the values are all 1s.
-        thrust::device_vector<int> d_unique_keys(num_cluster);
-        thrust::device_vector<int> d_compact_counts(num_cluster);
-        auto end_unique = thrust::reduce_by_key(
-            d_sorted_assignments.begin(),
-            d_sorted_assignments.end(),
-            thrust::constant_iterator<int>(1),
-            d_unique_keys.begin(),
-            d_compact_counts.begin()
-        );
-        // The result is a "compact" list. We need to scatter it back to a full-size array.
-        thrust::fill(d_scattered_counts.begin(), d_scattered_counts.end(), 0);
-        thrust::scatter(
-            d_compact_counts.begin(),
-            d_compact_counts.begin() + (end_unique.first - d_unique_keys.begin()), // Calculate end iterator for values
-            d_unique_keys.begin(),
-            d_scattered_counts.begin()
-        );
-
-        // B.2. Sum point coordinates for each cluster.
-        // Using a custom kernel with atomicAdd is often simpler for multi-dimensional sums.
-        thrust::fill(d_scattered_sums.begin(), d_scattered_sums.end(), 0.0f);
         int threads_per_block = 256;
-        int point_blocks = (num_points + threads_per_block - 1) / threads_per_block;
-        update_centroids_sum_kernel<<<point_blocks, threads_per_block>>>(
+        int blocks = (num_points + threads_per_block - 1) / threads_per_block;
+        thrust_update_kernel<<<blocks, threads_per_block>>>(
             thrust::raw_pointer_cast(d_points.data()),
             thrust::raw_pointer_cast(d_cluster_assignments.data()),
-            thrust::raw_pointer_cast(d_scattered_sums.data()),
+            thrust::raw_pointer_cast(d_sums.data()),
+            thrust::raw_pointer_cast(d_counts.data()),
             num_points,
             dims
         );
-        HANDLE_CUDA_ERROR(cudaGetLastError());
 
-        // B.3. Divide sums by counts to get the new centroids.
+        // B.5. Divide sums by counts to get the new centroids.
         // We use a transform operation to update d_centroids in place.
         thrust::transform(
             // Zip together the sums and an index to look up the correct count
             thrust::make_zip_iterator(thrust::make_tuple(
-                d_scattered_sums.begin(),
+                d_sums.begin(),
                 thrust::counting_iterator<int>(0)
             )),
             thrust::make_zip_iterator(thrust::make_tuple(
-                d_scattered_sums.end(),
+                d_sums.end(),
                 thrust::counting_iterator<int>(num_cluster * dims)
             )),
             d_centroids.begin(),
-            divide_by_count_functor(thrust::raw_pointer_cast(d_scattered_counts.data()), dims)
+            divide_by_count_functor(thrust::raw_pointer_cast(d_counts.data()), dims)
         );
 
         // == C. Convergence Check ==

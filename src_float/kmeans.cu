@@ -160,7 +160,7 @@ void smem_cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, float
     HANDLE_CUDA_ERROR(cudaMemsetAsync(d_new_centroids_sum, 0, centroids_size));
     HANDLE_CUDA_ERROR(cudaMemsetAsync(d_cluster_counts, 0, (size_t)num_cluster * sizeof(int)));
 
-    int threads_per_block = 256;
+    int threads_per_block = 128;
     int point_blocks = (num_points + threads_per_block - 1) / threads_per_block;
     int cluster_blocks = (num_cluster + threads_per_block - 1) / threads_per_block;
     size_t smem_size = centroids_size; // Shared memory needed for all centroids
