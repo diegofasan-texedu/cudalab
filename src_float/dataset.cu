@@ -64,7 +64,7 @@ void initialize_centroids(KmeansData& data, int num_centroids, unsigned int seed
     data.num_centroids = num_centroids;
 
     // Allocate memory for host-side centroids
-    data.h_centroids = new double[num_centroids * data.dims];
+    data.h_centroids = new float[num_centroids * data.dims];
 
     // Seed the random number generator
     kmeans_srand(seed);
@@ -77,6 +77,6 @@ void initialize_centroids(KmeansData& data, int num_centroids, unsigned int seed
         // Copy the point data to the centroid location
         memcpy(&data.h_centroids[i * data.dims],
                &data.h_points[point_index * data.dims],
-               data.dims * sizeof(double));
+               data.dims * sizeof(float));
     }
 }

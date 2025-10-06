@@ -8,11 +8,11 @@ import numpy as np
 from scipy.optimize import linear_sum_assignment
 
 def build_project():
-    """Runs the 'make' command to build the project."""
-    print("--- Building Project ---")
+    """Runs 'make all' to build both float and double versions of the project."""
+    print("--- Building Project (both float and double) ---")
     try:
         # We use capture_output=True to hide the make command's output unless there's an error.
-        result = subprocess.run(["make"], check=True, capture_output=True, text=True)
+        result = subprocess.run(["make", "all"], check=True, capture_output=True, text=True)
         print("Build successful.")
         # print(result.stdout) # Uncomment to see build output
     except FileNotFoundError:
@@ -202,20 +202,20 @@ def run_and_average_performance(command, num_runs=10):
         print(f"\n--- Average Performance ---")
         print(f"Overall average time per iteration: {overall_avg:.4f} ms")
 
-def run_executable():
+def run_executable(precision="double"):
     """Runs the compiled k-means executable with example arguments."""
     print("\n--- Running K-Means Executable ---")
     
-    executable_path = "./bin/kmeans"
+    executable_path = f"./bin/kmeans_{precision}" if precision == "float" else "./bin/kmeans"
     if not os.path.exists(executable_path):
-        print(f"Error: Executable not found at '{executable_path}'.")
+        print(f"Error: Executable not found at '{executable_path}'. Did you run 'make'?")
         sys.exit(1)
 
     # --- CONFIGURE YOUR K-MEANS ARGUMENTS HERE ---
     # This example assumes an input file at 'data/points_2d_1000.txt'
     # with 2 dimensions. Adjust these values for your dataset.
     # input_file = "inputs/random-n2048-d16-c16.txt"
-    input_file = "inputs/random-n16384-d24-c16.txt"
+    # input_file = "inputs/random-n16384-d24-c16.txt"
     input_file = "inputs/random-n65536-d32-c16.txt"
     args = [
         "-i", input_file,                # Input file
@@ -225,7 +225,7 @@ def run_executable():
         "-t", "0.0001",                  # Convergence threshold
         "-m", "200",                     # Max iterations
         "-s", "8675309",                 # Seed
-        # "-c" # Add -c to validate centroids. Remove for performance averaging.
+        "-c" # Add -c to validate centroids. Remove for performance averaging.
     ]
 
     # --- Extract tolerance for Python validation functions ---
@@ -277,6 +277,17 @@ def run_executable():
         sys.exit(1)
 
 if __name__ == "__main__":
+    # --- Determine Precision from Command-Line Arguments ---
+    # Usage: python3 run.py [float|double]
+    # Defaults to "double" if no argument is provided.
+    target_precision = "double"
+    if len(sys.argv) > 1 and sys.argv[1].lower() == "float":
+        target_precision = "float"
+
+    # Build both versions
     build_project()
-    run_executable()
+    
+    # Run the selected version
+    run_executable(precision=target_precision)
+    
     print("\n--- Script Finished Successfully ---")

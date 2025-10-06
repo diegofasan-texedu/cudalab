@@ -30,7 +30,7 @@ bool parse_args(int argc, char* argv[], KMeansParams& params) {
                 params.max_num_iter = atoi(optarg);
                 break;
             case 't':
-                params.threshold = strtod(optarg, NULL);
+                params.threshold = strtof(optarg, NULL); // Use strtof for float
                 break;
             case 'c':
                 params.output_centroids_flag = true;
@@ -71,7 +71,7 @@ bool parse_args(int argc, char* argv[], KMeansParams& params) {
 
     // If verbose flag is set, print parsed arguments to verify
     if (params.verbose) {
-        std::cout << "--- Parsed Arguments ---" << std::endl;
+        std::cout << "--- Parsed Arguments (FLOAT) ---" << std::endl;
         std::cout << "Num Clusters (-k): " << params.num_cluster << std::endl;
         std::cout << "Dimensions (-d): " << params.dims << std::endl;
         std::cout << "Input Filename (-i): " << (params.inputfilename ? params.inputfilename : "Not specified") << std::endl;
