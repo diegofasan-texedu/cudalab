@@ -176,6 +176,32 @@ def validate_point_assignments(points, final_centroids, answer_centroids, tolera
         if num_wrong > 10:
             print("  ...")
     
+def run_and_average_performance(command, num_runs=10):
+    """Runs the executable multiple times and averages the performance."""
+    avg_iter_times = []
+    perf_pattern = re.compile(r"^\s*(\d+),([\d\.\-e\+]+)")
+
+    print(f"\n--- Running {num_runs} times to average performance ---")
+    for i in range(num_runs):
+        try:
+            result = subprocess.run(command, check=True, capture_output=True, text=True)
+            # Find the performance line (e.g., "iterations,avg_time_ms")
+            for line in result.stdout.splitlines():
+                match = perf_pattern.match(line)
+                if match:
+                    avg_time = float(match.group(2))
+                    avg_iter_times.append(avg_time)
+                    print(f"  Run {i + 1}/{num_runs}: {avg_time:.4f} ms/iter")
+                    break # Found the line, move to next run
+        except subprocess.CalledProcessError as e:
+            print(f"Execution failed on run {i+1}: {e.stderr}")
+            return
+
+    if avg_iter_times:
+        overall_avg = np.mean(avg_iter_times)
+        print(f"\n--- Average Performance ---")
+        print(f"Overall average time per iteration: {overall_avg:.4f} ms")
+
 def run_executable():
     """Runs the compiled k-means executable with example arguments."""
     print("\n--- Running K-Means Executable ---")
@@ -188,16 +214,18 @@ def run_executable():
     # --- CONFIGURE YOUR K-MEANS ARGUMENTS HERE ---
     # This example assumes an input file at 'data/points_2d_1000.txt'
     # with 2 dimensions. Adjust these values for your dataset.
-    input_file = "inputs/random-n16384-d24-c16.txt"
+    # input_file = "inputs/random-n2048-d16-c16.txt"
+    # input_file = "inputs/random-n16384-d24-c16.txt"
+    input_file = "inputs/random-n65536-d32-c16.txt"
     args = [
         "-i", input_file,                # Input file
-        "-k", "16",                       # Number of clusters
-        "-d", "24",                       # Dimensions of data
+        "-k", "16",                      # Number of clusters
+        "-d", "32",                      # Dimensions of data
         "-e", "seq",                    # Execution method: cuda, seq, or thrust
         "-t", "0.0001",                  # Convergence threshold
         "-m", "200",                     # Max iterations
-        "-s", "8675309"                            # Output final centroids
-        ,"-c"
+        "-s", "8675309",                 # Seed
+        # "-c" # Add -c to validate centroids. Remove for performance averaging.
     ]
 
     # --- Extract tolerance for Python validation functions ---
@@ -212,6 +240,12 @@ def run_executable():
 
     command = [executable_path] + args
     print(f"Executing: {' '.join(command)}\n")
+
+    # --- Decide whether to run for performance or for validation ---
+    if "-c" not in args:
+        # If not validating centroids, run multiple times for performance measurement.
+        run_and_average_performance(command, num_runs=20)
+        return
 
     try:
         # Run the command and stream its output directly to the console.
