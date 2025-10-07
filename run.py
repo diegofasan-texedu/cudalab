@@ -216,8 +216,8 @@ def run_executable(precision="double"):
     # with 2 dimensions. Adjust these values for your dataset.
     input_file = "inputs/random-n2048-d16-c16.txt"
     dims = "16"
-    # input_file = "inputs/random-n16384-d24-c16.txt"
-    # dims = "24"
+    input_file = "inputs/random-n16384-d24-c16.txt"
+    dims = "24"
     # input_file = "inputs/random-n65536-d32-c16.txt"
     # dims = "32"
     args = [
@@ -228,7 +228,7 @@ def run_executable(precision="double"):
         "-t", "0.0001",                  # Convergence threshold
         "-m", "200",                     # Max iterations
         "-s", "8675309",                 # Seed
-        "-c" # Add -c to validate centroids. Remove for performance averaging.
+        # "-c" # Add -c to validate centroids. Remove for performance averaging.
     ]
 
     # --- Extract tolerance for Python validation functions ---

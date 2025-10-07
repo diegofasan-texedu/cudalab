@@ -10,8 +10,8 @@ SRCS_DOUBLE = src/*.cu
 SRCS_FLOAT = src_float/*.cu
 
 # Compiler flags
-NVCCFLAGS = -std=c++17 -O3 -Isrc -arch=sm_60 --extended-lambda
-NVCCFLAGS_FLOAT = -std=c++17 -O3 -Isrc_float -arch=sm_60 --extended-lambda
+NVCCFLAGS = -std=c++17 -O3 -Isrc -arch=sm_60 --extended-lambda -Wno-deprecated-gpu-targets
+NVCCFLAGS_FLOAT = -std=c++17 -O3 -Isrc_float -arch=sm_60 --extended-lambda -Wno-deprecated-gpu-targets
 
 # --- Rules ---
 .PHONY: all clean
