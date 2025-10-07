@@ -194,6 +194,7 @@ void smem_cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, doubl
         h_converged = 1;
         HANDLE_CUDA_ERROR(cudaMemcpy(d_converged, &h_converged, sizeof(int), cudaMemcpyHostToDevice));
 
+        // Reverted to the non-shared memory version of the convergence check.
         check_convergence_kernel<<<cluster_blocks, threads_per_block>>>(data.d_centroids, d_old_centroids, d_converged, num_cluster, dims, threshold_sq);
         HANDLE_CUDA_ERROR(cudaGetLastError());
 

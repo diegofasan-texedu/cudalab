@@ -5,7 +5,7 @@
 #include <chrono>
 #include <float.h>
 
-// --- Functor for the assignment step (Device-side distance calculation) ---
+// Functor to find the nearest centroid for a given point.
 struct assign_cluster_functor {
     const float* points;
     const float* centroids;
@@ -19,11 +19,8 @@ struct assign_cluster_functor {
         float min_dist_sq = FLT_MAX;
         int best_cluster = 0;
         
-        // Loop through all clusters
         for (int cluster_idx = 0; cluster_idx < num_clusters; ++cluster_idx) {
             float current_dist_sq = 0.0f;
-            
-            // Loop through all dimensions
             for (int dim_idx = 0; dim_idx < dims; ++dim_idx) {
                 float diff = points[point_idx * dims + dim_idx] - centroids[cluster_idx * dims + dim_idx];
                 current_dist_sq += diff * diff;
@@ -38,58 +35,18 @@ struct assign_cluster_functor {
     }
 };
 
-// --- Configuration ---
-#define MINI_BATCH_SIZE 1024
-#define THREADS_PER_BLOCK 256
-// ---------------------
-
-// A simple device-side LCG random number generator.
-__device__ unsigned int lcg_rand(unsigned int *state) {
-    *state = (*state * 1103515245 + 12345);
-    return (*state / 65536) % 32768;
-}
-
-// --- KERNEL: Random Sampling (Selects M points from N) ---
-__global__ void sample_indices_kernel(int* d_sample_indices, int num_points, int M) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < M) {
-        // Each thread gets a unique seed. clock64() is a fast device-side clock.
-        unsigned int seed = clock64() + idx;
-        d_sample_indices[idx] = lcg_rand(&seed) % num_points;
-    }
-}
-
-// --- KERNEL: Gather Mini-Batch Points (Replaces Thrust Gather) ---
-__global__ void gather_points_kernel(
-    const float* __restrict__ d_points,
-    const int* __restrict__ d_sample_indices,
-    float* __restrict__ d_minibatch_points,
-    int M, // Mini-Batch Size
-    int dims
-) {
-    int idx_in_batch = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (idx_in_batch < M) {
-        int original_point_idx = d_sample_indices[idx_in_batch];
-        for (int d = 0; d < dims; ++d) {
-            d_minibatch_points[idx_in_batch * dims + d] = d_points[original_point_idx * dims + d];
-        }
-    }
-}
-
-// --- KERNEL: Mini-Batch Centroid Update (O(M*D) with Atomics) ---
-__global__ void update_minibatch_centroids_kernel(
+// Kernel to sum points and counts for each cluster using atomics.
+__global__ void update_centroids_kernel(
     const float* __restrict__ d_points,
     const int* __restrict__ d_cluster_assignments,
     float* __restrict__ d_sums,
     int* __restrict__ d_counts,
-    int M, // Mini-Batch Size
+    int num_points,
     int dims
 ) {
-    // One thread per point in the mini-batch (M)
     int point_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (point_idx < M) {
+    if (point_idx < num_points) {
         int cluster_idx = d_cluster_assignments[point_idx];
 
         atomicAdd(&d_counts[cluster_idx], 1);
@@ -102,7 +59,7 @@ __global__ void update_minibatch_centroids_kernel(
     }
 };
 
-// --- FUNCTOR: Division (New Centroid = Sum / Count) ---
+// Functor to calculate a new centroid by dividing the sum of points by the count.
 struct divide_by_count_functor {
     const int* counts;
     int dims;
@@ -114,12 +71,11 @@ struct divide_by_count_functor {
         const float sum = thrust::get<0>(t);
         const int i = thrust::get<1>(t);
         const int count = counts[i / dims];
-        // Only update if count > 0, otherwise the sum (which is now in d_centroids) is reset to 0.0
         return (count > 0) ? sum / count : 0.0f;
     }
 };
 
-// Functor to calculate the squared distance between old and new centroids.
+// Functor to calculate the squared distance a centroid has moved.
 struct centroid_distance_functor {
     const float* new_centroids;
     const float* old_centroids;
@@ -142,27 +98,20 @@ struct centroid_distance_functor {
 
 void thrust_kmeans(int num_cluster, KmeansData& data, int max_num_iter, float threshold, bool output_centroids_flag, int seed, bool verbose) {
     if (verbose) {
-        std::cout << "Executing Mini-Batch K-Means for fastest wall-clock time..." << std::endl;
+        std::cout << "Executing Thrust K-Means (Full-Batch, float)..." << std::endl;
     }
 
     auto start_time = std::chrono::high_resolution_clock::now();
 
     const int num_points = data.num_points;
     const int dims = data.dims;
-    const int M = MINI_BATCH_SIZE;
+    const int threads_per_block = 256;
+    const int num_blocks = (num_points + threads_per_block - 1) / threads_per_block;
 
-    // Ensure mini-batch size is not larger than the dataset
-    const int actual_M = (num_points < M) ? num_points : M;
-    const int num_blocks_M = (actual_M + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
-
-    // --- 1. Allocate GPU Memory using device_vectors ---
     thrust::device_vector<float> d_points(data.h_points, data.h_points + num_points * dims);
     thrust::device_vector<float> d_centroids(data.h_centroids, data.h_centroids + num_cluster * dims);
-    thrust::device_vector<int> d_minibatch_assignments(actual_M);
-    thrust::device_vector<int> d_sample_indices(actual_M);
-    thrust::device_vector<float> d_minibatch_points(actual_M * dims);
+    thrust::device_vector<int> d_cluster_assignments(num_points);
 
-    // --- 2. Allocate temporary buffers for intermediate steps ---
     thrust::device_vector<float> d_old_centroids(num_cluster * dims);
     thrust::device_vector<float> d_sums(num_cluster * dims);
     thrust::device_vector<int> d_counts(num_cluster);
@@ -170,50 +119,35 @@ void thrust_kmeans(int num_cluster, KmeansData& data, int max_num_iter, float th
 
     int iter_to_converge = 0;
 
-    // --- 3. K-Means Iteration Loop ---
+    // K-Means Iteration Loop
     for (int iter = 0; iter < max_num_iter; ++iter) {
         iter_to_converge = iter + 1;
 
         thrust::copy(d_centroids.begin(), d_centroids.end(), d_old_centroids.begin());
 
-        // == A. Sampling Step ==
-        sample_indices_kernel<<<num_blocks_M, THREADS_PER_BLOCK>>>(
-            thrust::raw_pointer_cast(d_sample_indices.data()), num_points, actual_M);
-        HANDLE_CUDA_ERROR(cudaGetLastError());
-
-        // A.2: Gather the mini-batch points (O(M*D))
-        gather_points_kernel<<<num_blocks_M, THREADS_PER_BLOCK>>>(
-            thrust::raw_pointer_cast(d_points.data()),
-            thrust::raw_pointer_cast(d_sample_indices.data()),
-            thrust::raw_pointer_cast(d_minibatch_points.data()),
-            actual_M,
-            dims
-        );
-        HANDLE_CUDA_ERROR(cudaGetLastError());
-
-        // == B. Mini-Batch Assignment Step (O(M*K*D)) ==
+        // == A. Assignment Step ==
         thrust::transform(
             thrust::counting_iterator<int>(0),
-            thrust::counting_iterator<int>(actual_M),
-            d_minibatch_assignments.begin(),
+            thrust::counting_iterator<int>(num_points),
+            d_cluster_assignments.begin(),
             assign_cluster_functor(
-                thrust::raw_pointer_cast(d_minibatch_points.data()),
+                thrust::raw_pointer_cast(d_points.data()),
                 thrust::raw_pointer_cast(d_centroids.data()),
                 num_cluster,
                 dims
             )
         );
 
-        // == C. Mini-Batch Update Step (O(M*D)) ==
+        // == B. Update Step ==
         thrust::fill(d_sums.begin(), d_sums.end(), 0.0f);
         thrust::fill(d_counts.begin(), d_counts.end(), 0);
 
-        update_minibatch_centroids_kernel<<<num_blocks_M, THREADS_PER_BLOCK>>>(
-            thrust::raw_pointer_cast(d_minibatch_points.data()),
-            thrust::raw_pointer_cast(d_minibatch_assignments.data()),
+        update_centroids_kernel<<<num_blocks, threads_per_block>>>(
+            thrust::raw_pointer_cast(d_points.data()),
+            thrust::raw_pointer_cast(d_cluster_assignments.data()),
             thrust::raw_pointer_cast(d_sums.data()),
             thrust::raw_pointer_cast(d_counts.data()),
-            actual_M,
+            num_points,
             dims
         );
         HANDLE_CUDA_ERROR(cudaGetLastError());
@@ -231,7 +165,7 @@ void thrust_kmeans(int num_cluster, KmeansData& data, int max_num_iter, float th
             divide_by_count_functor(thrust::raw_pointer_cast(d_counts.data()), dims)
         );
 
-        // == D. Convergence Check ==
+        // == C. Convergence Check ==
         const float threshold_sq = threshold * threshold;
         const float* raw_new_centroids = thrust::raw_pointer_cast(d_centroids.data());
         const float* raw_old_centroids = thrust::raw_pointer_cast(d_old_centroids.data());
@@ -247,7 +181,7 @@ void thrust_kmeans(int num_cluster, KmeansData& data, int max_num_iter, float th
 
         if (max_dist_sq < threshold_sq) {
             if (verbose) {
-                std::cout << "Mini-Batch Convergence reached after " << iter_to_converge << " iterations." << std::endl;
+                std::cout << "Convergence reached after " << iter_to_converge << " iterations." << std::endl;
             }
             break;
         }
@@ -256,23 +190,8 @@ void thrust_kmeans(int num_cluster, KmeansData& data, int max_num_iter, float th
     auto end_time = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::milli> total_milliseconds = end_time - start_time;
 
-    // Print results in the format: iter_count,avg_iter_ms
     printf("%d,%f\n", iter_to_converge, total_milliseconds.count() / iter_to_converge);
 
-    // --- 4. Final Assignment and Copy Results ---
-    // After convergence, run one final assignment step on the full dataset
-    // to get the correct assignments for all points.
-    thrust::device_vector<int> d_final_assignments(num_points);
-    thrust::transform(
-        thrust::counting_iterator<int>(0),
-        thrust::counting_iterator<int>(num_points),
-        d_final_assignments.begin(),
-        assign_cluster_functor(
-            thrust::raw_pointer_cast(d_points.data()),
-            thrust::raw_pointer_cast(d_centroids.data()),
-            num_cluster, dims)
-    );
-
     thrust::copy(d_centroids.begin(), d_centroids.end(), data.h_centroids);
-    thrust::copy(d_final_assignments.begin(), d_final_assignments.end(), data.h_cluster_assignments);
+    thrust::copy(d_cluster_assignments.begin(), d_cluster_assignments.end(), data.h_cluster_assignments);
 }

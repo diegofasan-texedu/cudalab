@@ -62,42 +62,57 @@
 # Specification for sequential implementation of kmeans
 #
 [Sequential]
-How_To_Compile:
-Executable:
-Extra_Args:
+How_To_Compile: nvcc -std=c++17 -O3 -Isrc -arch=sm_60 --extended-lambda -Wno-deprecated-gpu-targets src/*.cu -o bin/kmeans
+Executable: bin/kmeans
+Extra_Args: -e seq
 
 #
 # Specification for GPU implementation of kmeans
 # using Thrust
 #
 [Thrust]
-How_To_Compile:
-Executable:
-Extra_Args:
+How_To_Compile: nvcc -std=c++17 -O3 -Isrc -arch=sm_60 --extended-lambda -Wno-deprecated-gpu-targets src/*.cu -o bin/kmeans
+Executable: bin/kmeans
+Extra_Args: -e thrust
 
 #
 # Specification for GPU implementation of kmeans
 # using CUDA
 #
 [CUDA basic]
-How_To_Compile:
-Executable:
-Extra_Args:
+How_To_Compile: nvcc -std=c++17 -O3 -Isrc -arch=sm_60 --extended-lambda -Wno-deprecated-gpu-targets src/*.cu -o bin/kmeans
+Executable: bin/kmeans
+Extra_Args: -e cuda
 
 #
 # Specification for GPU implementation of kmeans
 # using Shared Memory
 #
 [CUDA shared]
-How_To_Compile:
-Executable:
-Extra_Args:
+How_To_Compile: nvcc -std=c++17 -O3 -Isrc -arch=sm_60 --extended-lambda -Wno-deprecated-gpu-targets src/*.cu -o bin/kmeans
+Executable: bin/kmeans
+Extra_Args: -e smemcuda
 
 #
 # Specification for GPU implementation of kmeans
 # Alternatives
 #
-[Alternatives]
-How_To_Compile:
-Executable:
-Extra_Args:
+[Alternatives - Floating point format seq]
+How_To_Compile: nvcc -std=c++17 -O3 -Isrc_float -arch=sm_60 --extended-lambda -Wno-deprecated-gpu-targets src_float/*.cu -o bin/kmeans_float
+Executable: bin/kmeans_float
+Extra_Args: -e seq
+
+[Alternatives - Floating point format thrust]
+How_To_Compile: nvcc -std=c++17 -O3 -Isrc_float -arch=sm_60 --extended-lambda -Wno-deprecated-gpu-targets src_float/*.cu -o bin/kmeans_float
+Executable: bin/kmeans_float
+Extra_Args: -e thrust
+
+[Alternatives - Floating point format cuda]
+How_To_Compile: nvcc -std=c++17 -O3 -Isrc_float -arch=sm_60 --extended-lambda -Wno-deprecated-gpu-targets src_float/*.cu -o bin/kmeans_float
+Executable: bin/kmeans_float
+Extra_Args: -e cuda
+
+[Alternatives - Floating point format smemcuda]
+How_To_Compile: nvcc -std=c++17 -O3 -Isrc_float -arch=sm_60 --extended-lambda -Wno-deprecated-gpu-targets src_float/*.cu -o bin/kmeans_float
+Executable: bin/kmeans_float
+Extra_Args: -e smemcuda

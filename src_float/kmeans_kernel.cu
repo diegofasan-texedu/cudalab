@@ -224,7 +224,7 @@ __global__ void check_convergence_kernel(const float* d_centroids, const float* 
 
     // If any centroid moved more than the threshold, we have not converged.
     // This write is a benign race condition: if multiple threads write 0, the result is still 0.
-    if (dist_sq > threshold_sq*0.01f) {
+    if (dist_sq > threshold_sq) {
         *d_converged = 0; // Set flag to "not converged"
     }
 }

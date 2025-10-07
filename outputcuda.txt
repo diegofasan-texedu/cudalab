@@ -1,0 +1,22 @@
+
+NOTICE: Existing SQLite export found: kmeans_profile_double_cuda.sqlite
+        It is assumed file was previously exported from: kmeans_profile_double_cuda.nsys-rep
+        Consider using --force-export=true if needed.
+
+Processing [kmeans_profile_double_cuda.sqlite] with [/opt/nvidia/nsight-systems/2025.5.1/host-linux-x64/reports/cuda_api_sum.py]... 
+
+ ** CUDA API Summary (cuda_api_sum):
+
+ Time (%)  Total Time (ns)  Num Calls   Avg (ns)     Med (ns)    Min (ns)  Max (ns)   StdDev (ns)           Name         
+ --------  ---------------  ---------  -----------  -----------  --------  ---------  -----------  ----------------------
+     97.3        260859507          2  130429753.5  130429753.5      5734  260853773  184447417.2  cudaEventCreate       
+      2.1          5730979         13     440844.5      48627.0      8781    2948516     809482.2  cudaMemcpy            
+      0.4           998726         12      83227.2       6324.0      4412     867645     247240.9  cudaLaunchKernel      
+      0.1           278432          7      39776.0       3730.0      1759     166196      64894.1  cudaMalloc            
+      0.1           249463          7      35637.6       3230.0      2564     165985      61928.1  cudaFree              
+      0.0            26917          2      13458.5      13458.5      7131      19786       8948.4  cudaEventRecord       
+      0.0            14454          2       7227.0       7227.0      2920      11534       6091.0  cudaMemsetAsync       
+      0.0             2935          1       2935.0       2935.0      2935       2935          0.0  cudaEventSynchronize  
+      0.0             2142          2       1071.0       1071.0       402       1740        946.1  cudaEventDestroy      
+      0.0             1061          1       1061.0       1061.0      1061       1061          0.0  cuModuleGetLoadingMode
+
