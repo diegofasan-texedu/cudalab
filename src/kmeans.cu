@@ -167,8 +167,6 @@ void smem_cuda_kmeans(int num_cluster, KmeansData& data, int max_num_iter, doubl
 
     // Calculate shared memory size for the update kernel.
     size_t update_smem_size = (num_cluster * dims * sizeof(double)) + (num_cluster * sizeof(int));
-    // It's good practice to check if this exceeds device limits, though for typical
-    // k-means problems it should be fine.
 
     int iter_to_converge = 0;
     for (int iter = 0; iter < max_num_iter; ++iter) {

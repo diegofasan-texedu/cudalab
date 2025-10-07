@@ -35,7 +35,6 @@ struct assign_cluster_functor {
     }
 };
 
-// --- KERNEL: Full-Batch Centroid Update (O(N*D) with Atomics) ---
 __global__ void update_centroids_kernel(
     const double* __restrict__ d_points,
     const int* __restrict__ d_cluster_assignments,
